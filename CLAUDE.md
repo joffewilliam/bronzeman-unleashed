@@ -20,7 +20,7 @@ Common tasks have documented workflows in [claude-docs/workflows/](claude-docs/w
 
 ## Tech Stack
 
-- **Language**: Java 8
+- **Language**: Java 11
 - **Framework**: RuneLite Client API
 - **Build**: Gradle
 - **Annotations**: Lombok

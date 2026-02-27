@@ -232,7 +232,7 @@ public class ItemUnlockOverlay extends Overlay {
         }
 
         int y = 40;
-        int frameX = WIDTH + -visibleWidth / 2; // TOP_CENTER anchor
+        int frameX = (WIDTH - visibleWidth) / 2; // TOP_CENTER: center frame in overlay width
 
         g.setComposite(AlphaComposite.SrcOver);
 

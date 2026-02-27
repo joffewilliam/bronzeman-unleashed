@@ -1,6 +1,7 @@
 package com.elertan.panel.components;
 
 import com.elertan.ui.Bindings;
+import com.elertan.ui.Property;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Singleton;
 import java.awt.BorderLayout;
@@ -34,9 +35,11 @@ import net.runelite.client.ui.ColorScheme;
 public class GameRulesEditor extends JPanel {
 
     private final GameRulesEditorViewModel viewModel;
+    private final Property<Boolean> editable;
 
     private GameRulesEditor(GameRulesEditorViewModel viewModel) {
         this.viewModel = viewModel;
+        this.editable = viewModel.isViewOnlyModeProperty.derive(v -> !v);
         setLayout(new GridBagLayout());
 
         GridBagConstraints gbc = new GridBagConstraints();
@@ -185,248 +188,80 @@ public class GameRulesEditor extends JPanel {
 
 
     private JPanel createGeneralPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox onlyForTradeableItemsCheckBox = new JCheckBox();
-        Bindings.bindSelected(
-            onlyForTradeableItemsCheckBox,
-            viewModel.onlyForTradeableItemsProperty
-        );
-        Bindings.bindEnabled(
-            onlyForTradeableItemsCheckBox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Only for tradeable items",
                 "Whether to only unlock items that are tradeable (reduces a lot of clutter for e.g. quest items)",
-                onlyForTradeableItemsCheckBox
-            ), gbc
-        );
-        gbc.gridy++;
-
-        return panel;
+                viewModel.onlyForTradeableItemsProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createGroundItemsPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox restrictGroundItemsCheckBox = new JCheckBox();
-        Bindings.bindSelected(
-            restrictGroundItemsCheckBox,
-            viewModel.restrictGroundItemsProperty
-        );
-        Bindings.bindEnabled(
-            restrictGroundItemsCheckBox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Restrict ground items",
                 "Whether to only allow taking items that are spawns, belong to you, or your bronzeman group members.",
-                restrictGroundItemsCheckBox
-            ), gbc
-        );
-        gbc.gridy++;
-
-        return panel;
+                viewModel.restrictGroundItemsProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createTradePanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox preventTradeOutsideGroupCheckBox = new JCheckBox();
-        Bindings.bindSelected(
-            preventTradeOutsideGroupCheckBox,
-            viewModel.preventTradeOutsideGroupProperty
-        );
-        Bindings.bindEnabled(
-            preventTradeOutsideGroupCheckBox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Prevent outside group",
                 "Whether to prevent trading other players that do not belong to the group",
-                preventTradeOutsideGroupCheckBox
-            ), gbc
-        );
-        gbc.gridy++;
-
-        // Temporarily disabled, not implemented yet
-//        JCheckBox preventTradeLockedItemsCheckBox = new JCheckBox();
-//        Bindings.bindSelected(
-//            preventTradeLockedItemsCheckBox,
-//            viewModel.preventTradeLockedItemsProperty
-//        );
-//        Bindings.bindEnabled(
-//            preventTradeLockedItemsCheckBox,
-//            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-//        );
-//        panel.add(
-//            createCheckboxInput(
-//                "Prevent locked items",
-//                "Whether to prevent trading when the other player offers item(s) that are still locked",
-//                preventTradeLockedItemsCheckBox
-//            ), gbc
-//        );
-
-        return panel;
+                viewModel.preventTradeOutsideGroupProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createGrandExchangePanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox preventGrandExchangeBuyOffersCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            preventGrandExchangeBuyOffersCheckbox,
-            viewModel.preventGrandExchangeBuyOffersProperty
-        );
-        Bindings.bindEnabled(
-            preventGrandExchangeBuyOffersCheckbox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Prevent buy offers",
                 "Whether to prevent buying items on the Grand Exchange that are still locked",
-                preventGrandExchangeBuyOffersCheckbox
-            ), gbc
-        );
-
-        return panel;
+                viewModel.preventGrandExchangeBuyOffersProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createPlayerOwnedHousePanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox preventPlayerOwnedHouseCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            preventPlayerOwnedHouseCheckbox,
-            viewModel.preventPlayedOwnedHouseProperty
-        );
-        Bindings.bindEnabled(
-            preventPlayerOwnedHouseCheckbox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Restrict POH usage",
                 "Restrict using a POH that isn't yours or a group member's",
-                preventPlayerOwnedHouseCheckbox
-            ), gbc
-        );
-
-        return panel;
+                viewModel.preventPlayedOwnedHouseProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createPlayerVersusPlayerPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox restrictPlayerVersusPlayerLootCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            restrictPlayerVersusPlayerLootCheckbox,
-            viewModel.restrictPlayerVersusPlayerLootProperty
-        );
-        Bindings.bindEnabled(
-            restrictPlayerVersusPlayerLootCheckbox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Restrict loot",
                 "Restricts all loot from drops when killing other players or when opening loot keys",
-                restrictPlayerVersusPlayerLootCheckbox
-            ), gbc
-        );
-
-        return panel;
+                viewModel.restrictPlayerVersusPlayerLootProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createFaladorPartyRoomPanel() {
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setOpaque(false);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(0, 0, 5, 0);
-
-        JCheckBox restrictBalloonsCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            restrictBalloonsCheckbox,
-            viewModel.restrictFaladorPartyRoomBalloonsProperty
-        );
-        Bindings.bindEnabled(
-            restrictBalloonsCheckbox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
+        return new FormBuilder()
+            .checkbox(
                 "Restrict balloons",
                 "Restricts bursting the balloons in the Falador Party Room",
-                restrictBalloonsCheckbox
-            ), gbc
-        );
-
-        return panel;
+                viewModel.restrictFaladorPartyRoomBalloonsProperty,
+                editable
+            )
+            .build();
     }
 
     private JPanel createNotificationsPanel() {

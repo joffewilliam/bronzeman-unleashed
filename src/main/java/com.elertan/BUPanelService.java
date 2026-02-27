@@ -2,7 +2,6 @@ package com.elertan;
 
 import com.elertan.models.AccountConfiguration;
 import com.elertan.panel.BUPanel;
-import com.elertan.panel.BUPanelViewModel;
 import com.elertan.utils.Subscription;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -23,8 +22,6 @@ public class BUPanelService implements BUPluginLifecycle {
     private AccountConfigurationService accountConfigurationService;
 
     @Inject
-    private BUPanelViewModel.Factory buPanelViewModelFactory;
-    @Inject
     private BUPanel.Factory buPanelFactory;
 
     private BUPanel buPanel;
@@ -33,7 +30,7 @@ public class BUPanelService implements BUPluginLifecycle {
 
     @Override
     public void startUp() {
-        buPanel = buPanelFactory.create(buPanelViewModelFactory.create());
+        buPanel = buPanelFactory.create();
         panelNavigationButton = NavigationButton.builder()
             .tooltip("Bronzeman Unleashed")
             .icon(buResourceService.getIconBufferedImage())
