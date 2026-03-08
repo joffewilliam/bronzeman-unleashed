@@ -1,6 +1,8 @@
 package com.elertan;
 
 import com.elertan.resource.BUImageUtil;
+import java.awt.BasicStroke;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.Arrays;
 import java.util.Objects;
@@ -59,6 +61,29 @@ public class BUResourceService implements BUPluginLifecycle {
     private final ImageIcon loadingSpinnerImageIcon = new ImageIcon(Objects.requireNonNull(
         BUPlugin.class.getResource(
             LOADING_SPINNER_FILE_PATH)));
+
+    @Getter
+    private final BufferedImage joinPartyIconBufferedImage = createJoinPartyIconPlaceholder(24, 24);
+
+    private static BufferedImage createJoinPartyIconPlaceholder(int w, int h) {
+        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        try {
+            g.setColor(java.awt.Color.LIGHT_GRAY);
+            g.setStroke(new BasicStroke(2f));
+            int pad = 4;
+            int r = Math.min(w, h) / 2 - pad;
+            int cx = w / 2;
+            int cy = h / 2;
+            g.drawOval(cx - r, cy - r, 2 * r, 2 * r);
+            g.drawLine(cx - r / 2, cy, cx + r / 2, cy);
+            g.drawLine(cx, cy - r / 2, cx, cy + r / 2);
+        } finally {
+            g.dispose();
+        }
+        return img;
+    }
+
     private final ConcurrentHashMap<Integer, Integer> itemImageModIconIdCache = new ConcurrentHashMap<>();
     @Inject
     private Client client;

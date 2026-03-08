@@ -24,6 +24,7 @@ public class HeaderViewViewModel implements AutoCloseable {
     public final Property<List<Long>> accountHashesFromAllUnlockedItems;
     public final Property<Map<Long, String>> accountHashToMemberNameMap;
     private final Runnable navigateToConfiguration;
+    private final Runnable rejoinLastParty;
     private final MembersDataProvider membersDataProvider;
     private final MembersDataProvider.MemberMapListener memberMapListener;
 
@@ -33,8 +34,10 @@ public class HeaderViewViewModel implements AutoCloseable {
         Property<SortedBy> sortedBy,
         Property<Long> unlockedByAccountHash,
         MembersDataProvider membersDataProvider,
-        Runnable navigateToConfiguration) {
+        Runnable navigateToConfiguration,
+        Runnable rejoinLastParty) {
         this.membersDataProvider = membersDataProvider;
+        this.rejoinLastParty = rejoinLastParty;
 
         this.searchText = searchText;
         this.sortedBy = sortedBy;
@@ -84,6 +87,12 @@ public class HeaderViewViewModel implements AutoCloseable {
         navigateToConfiguration.run();
     }
 
+    public void onRejoinLastPartyClick() {
+        if (rejoinLastParty != null) {
+            rejoinLastParty.run();
+        }
+    }
+
     private Map<Long, String> buildAccountHashToMemberNameMap() {
         Map<Long, Member> membersMap = membersDataProvider.getMembersMap();
         if (membersMap == null) {
@@ -105,7 +114,8 @@ public class HeaderViewViewModel implements AutoCloseable {
             Property<String> searchText,
             Property<UnlockedItemsScreenViewModel.SortedBy> sortedBy,
             Property<Long> unlockedByAccountHash,
-            Runnable navigateToConfiguration
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty
         );
     }
 
@@ -121,7 +131,8 @@ public class HeaderViewViewModel implements AutoCloseable {
             Property<String> searchText,
             Property<UnlockedItemsScreenViewModel.SortedBy> sortedBy,
             Property<Long> unlockedByAccountHash,
-            Runnable navigateToConfiguration
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty
         ) {
             return new HeaderViewViewModel(
                 allUnlockedItems,
@@ -129,7 +140,8 @@ public class HeaderViewViewModel implements AutoCloseable {
                 sortedBy,
                 unlockedByAccountHash,
                 membersDataProvider,
-                navigateToConfiguration
+                navigateToConfiguration,
+                rejoinLastParty
             );
         }
     }

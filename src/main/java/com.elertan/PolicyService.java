@@ -37,5 +37,7 @@ public class PolicyService implements BUPluginLifecycle {
 
         buChatService.sendErrorMessage(chatMessageProvider.messageFor(
             MessageKey.STILL_LOADING_TEMPORARY_STRICT_GAME_RULES_ENFORCEMENT));
+        buChatService.sendErrorMessage(chatMessageProvider.messageFor(
+            MessageKey.STILL_LOADING_JOIN_PARTY));
     }
 }

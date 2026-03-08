@@ -40,7 +40,8 @@ public class ItemsScreen extends JPanel {
             Property<String> searchText,
             Property<UnlockedItemsScreenViewModel.SortedBy> sortedBy,
             Property<Long> unlockedByAccountHash,
-            Runnable navigateToConfiguration
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty
         );
     }
 
@@ -62,14 +63,16 @@ public class ItemsScreen extends JPanel {
             Property<String> searchText,
             Property<UnlockedItemsScreenViewModel.SortedBy> sortedBy,
             Property<Long> unlockedByAccountHash,
-            Runnable navigateToConfiguration
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty
         ) {
             HeaderViewViewModel headerViewViewModel = headerViewViewModelFactory.create(
                 allUnlockedItems,
                 searchText,
                 sortedBy,
                 unlockedByAccountHash,
-                navigateToConfiguration
+                navigateToConfiguration,
+                rejoinLastParty
             );
             MainViewViewModel mainViewViewModel = mainViewViewModelFactory.create(
                 allUnlockedItems,

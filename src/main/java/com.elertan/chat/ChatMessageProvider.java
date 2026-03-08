@@ -26,6 +26,10 @@ public final class ChatMessageProvider {
             this::stillLoadingTemporaryStrictGameRulesEnforcement
         );
         this.resolvers.put(
+            MessageKey.STILL_LOADING_JOIN_PARTY,
+            this::stillLoadingJoinPartyMessage
+        );
+        this.resolvers.put(
             MessageKey.STILL_LOADING_PLEASE_WAIT,
             this::stillLoadingPleaseWaitError
         );
@@ -90,6 +94,10 @@ public final class ChatMessageProvider {
 
     private String stillLoadingTemporaryStrictGameRulesEnforcement() {
         return "Bronzeman Unleashed is still loading. Temporarily enforcing strict game rules to ensure integrity.";
+    }
+
+    private String stillLoadingJoinPartyMessage() {
+        return "Please join a party in the Bronzeman plugin to finish loading.";
     }
 
     private String stillLoadingPleaseWaitError() {
@@ -173,6 +181,7 @@ public final class ChatMessageProvider {
      */
     public enum MessageKey {
         STILL_LOADING_TEMPORARY_STRICT_GAME_RULES_ENFORCEMENT,
+        STILL_LOADING_JOIN_PARTY,
         STILL_LOADING_PLEASE_WAIT,
         TRADE_RESTRICTION,
         GROUND_ITEM_TAKE_RESTRICTION,

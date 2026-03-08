@@ -15,18 +15,21 @@ public class UnlockedItemsScreen extends JPanel implements AutoCloseable {
     private final LoadingScreen.Factory loadingScreenFactory;
     private final ItemsScreen.Factory itemsScreenFactory;
     private final Runnable navigateToConfiguration;
+    private final Runnable rejoinLastParty;
     private final AutoCloseable cardLayoutBinding;
 
     private UnlockedItemsScreen(
         UnlockedItemsScreenViewModel viewModel,
         LoadingScreen.Factory loadingScreenFactory,
         ItemsScreen.Factory itemsScreenFactory,
-        Runnable navigateToConfiguration
+        Runnable navigateToConfiguration,
+        Runnable rejoinLastParty
     ) {
         this.viewModel = viewModel;
         this.loadingScreenFactory = loadingScreenFactory;
         this.itemsScreenFactory = itemsScreenFactory;
         this.navigateToConfiguration = navigateToConfiguration;
+        this.rejoinLastParty = rejoinLastParty;
 
         CardLayout cardLayout = new CardLayout();
         setLayout(cardLayout);
@@ -56,7 +59,8 @@ public class UnlockedItemsScreen extends JPanel implements AutoCloseable {
                     viewModel.searchText,
                     viewModel.sortedBy,
                     viewModel.unlockedByAccountHash,
-                    navigateToConfiguration
+                    navigateToConfiguration,
+                    rejoinLastParty
                 );
         }
 
@@ -68,7 +72,8 @@ public class UnlockedItemsScreen extends JPanel implements AutoCloseable {
     public interface Factory {
 
         UnlockedItemsScreen create(UnlockedItemsScreenViewModel viewModel,
-            Runnable navigateToConfiguration);
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty);
     }
 
     @Singleton
@@ -81,12 +86,14 @@ public class UnlockedItemsScreen extends JPanel implements AutoCloseable {
 
         @Override
         public UnlockedItemsScreen create(UnlockedItemsScreenViewModel viewModel,
-            Runnable navigateToConfiguration) {
+            Runnable navigateToConfiguration,
+            Runnable rejoinLastParty) {
             return new UnlockedItemsScreen(
                 viewModel,
                 loadingScreenFactory,
                 itemsScreenFactory,
-                navigateToConfiguration
+                navigateToConfiguration,
+                rejoinLastParty
             );
         }
     }

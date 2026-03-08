@@ -141,10 +141,12 @@ public class RemoteStorageService implements BUPluginLifecycle {
             return;
         }
 
-        // We can support different kinds of data ports here later
         FirebaseRealtimeDatabaseURL url = accountConfiguration.getFirebaseRealtimeDatabaseURL();
-        configureFromFirebaseRealtimeDatabase(url);
+        if (url == null) {
+            return;
+        }
 
+        configureFromFirebaseRealtimeDatabase(url);
         state.set(State.Ready);
     }
 

@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -82,12 +83,15 @@ public class UnlockedItemsDataProvider extends AbstractDataProvider {
         keyValueStoragePort = remoteStorageService.getUnlockedItemsStoragePort();
         keyValueStoragePort.addListener(storagePortListener);
 
-        keyValueStoragePort.readAll().whenComplete((map, throwable) -> {
+        keyValueStoragePort.readAll()
+            .orTimeout(20, TimeUnit.SECONDS)
+            .whenComplete((map, throwable) -> {
             if (throwable != null) {
                 log.error("UnlockedItemDataProvider storageport read all failed", throwable);
-                return;
+                unlockedItemsMap = new ConcurrentHashMap<>();
+            } else {
+                unlockedItemsMap = map != null ? new ConcurrentHashMap<>(map) : new ConcurrentHashMap<>();
             }
-            unlockedItemsMap = new ConcurrentHashMap<>(map);
             log.debug("UnlockedItemDataProvider initialized with {} items", unlockedItemsMap.size());
             setState(State.Ready);
         });

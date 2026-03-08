@@ -530,7 +530,7 @@ public class GameRulesEditor extends JPanel {
         panel.add(
             createTextFieldInput(
                 "Party password",
-                "When auto-join is enabled in the plugin configuration, use this password to join the group's party",
+                "Party password for your group. Use the \"Rejoin last party\" button on the Game Rules screen to join using this password.",
                 partyPasswordTextField
             ), gbc
         );

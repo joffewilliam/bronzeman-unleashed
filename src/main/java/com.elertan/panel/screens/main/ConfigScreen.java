@@ -27,6 +27,7 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
 
     private final AutoCloseable backButtonEnabledBinding;
     private final AutoCloseable updateGameRulesButtonEnabledBinding;
+    private final AutoCloseable rejoinPartyButtonEnabledBinding;
     private final AutoCloseable leaveButtonEnabledBinding;
     private final AutoCloseable errorMessageLabelVisibleBinding;
     private final AutoCloseable errorMessageLabelTextBinding;
@@ -149,6 +150,20 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
         add(updateGameRulesButton, gbc);
         gbc.gridy++;
 
+        add(Box.createVerticalStrut(10), gbc);
+        gbc.gridy++;
+
+        JButton rejoinPartyButton = new JButton("Rejoin last party");
+        rejoinPartyButton.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0));
+        rejoinPartyButton.addActionListener(e -> viewModel.rejoinLastPartyClick());
+        rejoinPartyButton.setToolTipText("Join the party using the password saved in your game rules");
+        rejoinPartyButtonEnabledBinding = Bindings.bindEnabled(
+            rejoinPartyButton,
+            viewModel.isSubmittingProperty.derive(b -> !b)
+        );
+        add(rejoinPartyButton, gbc);
+        gbc.gridy++;
+
         add(Box.createVerticalStrut(15), gbc);
         gbc.gridy++;
 
@@ -167,6 +182,7 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
     @Override
     public void close() throws Exception {
         leaveButtonEnabledBinding.close();
+        rejoinPartyButtonEnabledBinding.close();
         errorMessageLabelVisibleBinding.close();
         errorMessageLabelTextBinding.close();
         updateGameRulesButtonEnabledBinding.close();

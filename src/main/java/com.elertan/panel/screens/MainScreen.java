@@ -52,7 +52,8 @@ public class MainScreen extends JPanel implements AutoCloseable {
             case UNLOCKED_ITEMS:
                 return unlockedItemsScreenFactory.create(
                     unlockedItemsScreenViewModel,
-                    viewModel::navigateToConfig
+                    viewModel::navigateToConfig,
+                    configScreenViewModel::rejoinLastPartyClick
                 );
             case CONFIG:
                 return configScreenFactory.create(configScreenViewModel);

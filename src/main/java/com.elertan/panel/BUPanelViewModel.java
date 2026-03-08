@@ -19,8 +19,10 @@ public final class BUPanelViewModel implements AutoCloseable {
 
     private BUPanelViewModel(AccountConfigurationService accountConfigurationService,
         Client client) {
+        // subscribeImmediate so we get current config when panel opens (subscribe() would not),
+        // otherwise we can stay stuck on WAIT_FOR_LOGIN when user opens panel after logging in
         accountConfigSubscription = accountConfigurationService.currentAccountConfiguration()
-            .subscribe(this::currentAccountConfigurationChangeListener);
+            .subscribeImmediate((config, __) -> setScreenForAccountConfiguration(config));
 
         if (accountConfigurationService.isReady() && client.getGameState() == GameState.LOGGED_IN) {
             setScreenForAccountConfiguration(accountConfigurationService.getCurrentAccountConfiguration());
@@ -35,14 +37,9 @@ public final class BUPanelViewModel implements AutoCloseable {
         }
     }
 
-    private void currentAccountConfigurationChangeListener(
-        AccountConfiguration accountConfiguration) {
-        setScreenForAccountConfiguration(accountConfiguration);
-    }
-
     private void setScreenForAccountConfiguration(
         AccountConfiguration accountConfiguration) {
-        if (accountConfiguration == null) {
+        if (accountConfiguration == null || accountConfiguration.getFirebaseRealtimeDatabaseURL() == null) {
             screen.set(Screen.SETUP);
         } else {
             screen.set(Screen.MAIN);

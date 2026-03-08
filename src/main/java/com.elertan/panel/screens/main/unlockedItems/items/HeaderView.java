@@ -68,9 +68,35 @@ public class HeaderView extends JPanel implements AutoCloseable {
         });
         configButton.addActionListener(e -> viewModel.onOpenConfigurationClick());
 
+        JButton rejoinPartyButton = new JButton();
+        rejoinPartyButton.setIcon(new ImageIcon(buResourceService.getJoinPartyIconBufferedImage()));
+        rejoinPartyButton.setToolTipText("Join last party");
+        rejoinPartyButton.setPreferredSize(new Dimension(30, 30));
+        rejoinPartyButton.setFocusable(false);
+        rejoinPartyButton.setBorderPainted(false);
+        rejoinPartyButton.setContentAreaFilled(true);
+        rejoinPartyButton.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        rejoinPartyButton.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                rejoinPartyButton.setBackground(ColorScheme.DARK_GRAY_HOVER_COLOR);
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                rejoinPartyButton.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+            }
+        });
+        rejoinPartyButton.addActionListener(e -> viewModel.onRejoinLastPartyClick());
+
+        JPanel rightButtonsPanel = new JPanel(new BorderLayout(4, 0));
+        rightButtonsPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        rightButtonsPanel.add(rejoinPartyButton, BorderLayout.CENTER);
+        rightButtonsPanel.add(configButton, BorderLayout.EAST);
+
         JPanel searchbarHeader = new JPanel(new BorderLayout(5, 0));
         searchbarHeader.add(searchField, BorderLayout.CENTER);
-        searchbarHeader.add(configButton, BorderLayout.EAST);
+        searchbarHeader.add(rightButtonsPanel, BorderLayout.EAST);
 
         add(searchbarHeader);
 

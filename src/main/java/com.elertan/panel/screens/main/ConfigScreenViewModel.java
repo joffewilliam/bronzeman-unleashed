@@ -1,6 +1,7 @@
 package com.elertan.panel.screens.main;
 
 import com.elertan.AccountConfigurationService;
+import com.elertan.BUPartyService;
 import com.elertan.GameRulesService;
 import com.elertan.MemberService;
 import com.elertan.data.GameRulesDataProvider;
@@ -26,6 +27,7 @@ public class ConfigScreenViewModel {
     public final Property<String> errorMessageProperty = new Property<>(null);
 
     private final AccountConfigurationService accountConfigurationService;
+    private final BUPartyService buPartyService;
     private final MemberService memberService;
     private final GameRulesDataProvider gameRulesDataProvider;
     private final Runnable navigateToMainScreen;
@@ -35,9 +37,11 @@ public class ConfigScreenViewModel {
 
     private ConfigScreenViewModel(Client client,
         AccountConfigurationService accountConfigurationService, GameRulesService gameRulesService,
-        GameRulesDataProvider gameRulesDataProvider, MemberService memberService,
+        GameRulesDataProvider gameRulesDataProvider, BUPartyService buPartyService,
+        MemberService memberService,
         Runnable navigateToMainScreen) {
         this.accountConfigurationService = accountConfigurationService;
+        this.buPartyService = buPartyService;
         this.memberService = memberService;
         this.gameRulesDataProvider = gameRulesDataProvider;
         this.navigateToMainScreen = navigateToMainScreen;
@@ -68,6 +72,10 @@ public class ConfigScreenViewModel {
                 setGameRules(gameRulesService.getGameRules().get());
                 gameRulesEditorViewModelPropsProperty.set(propsSupplier.get());
             });
+    }
+
+    public void rejoinLastPartyClick() {
+        buPartyService.rejoinLastParty();
     }
 
     public void onBackButtonClick() {
@@ -197,6 +205,8 @@ public class ConfigScreenViewModel {
         @Inject
         private GameRulesDataProvider gameRulesDataProvider;
         @Inject
+        private BUPartyService buPartyService;
+        @Inject
         private MemberService memberService;
 
         @Override
@@ -206,6 +216,7 @@ public class ConfigScreenViewModel {
                 accountConfigurationService,
                 gameRulesService,
                 gameRulesDataProvider,
+                buPartyService,
                 memberService,
                 navigateToMainScreen
             );
