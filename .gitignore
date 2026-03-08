@@ -1,5 +1,9 @@
 .gradle
+.gradle-jdk11/
+.gradle-jdk11-*/
+.gradle-local/
 build
+.cursor/
 .project
 .settings/
 .classpath
@@ -9,3 +13,7 @@ nbproject/
 .DS_Store
 bin/
 /.factorypath
+planspec/implementations/clan-chat-rank-icon-fix.md
+planspec/designs/local-storage-consolidation.md
+build.gradle
+

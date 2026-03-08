@@ -5,6 +5,8 @@ import com.elertan.panel.screens.setup.GameRulesStepView;
 import com.elertan.panel.screens.setup.GameRulesStepViewViewModel;
 import com.elertan.panel.screens.setup.RemoteStepView;
 import com.elertan.panel.screens.setup.RemoteStepViewViewModel;
+import com.elertan.panel.screens.setup.StorageModeStepView;
+import com.elertan.panel.screens.setup.StorageModeStepViewModel;
 import com.elertan.ui.Bindings;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
@@ -27,6 +29,7 @@ import javax.swing.ScrollPaneConstants;
 public class SetupScreen extends JPanel implements AutoCloseable {
 
     private final SetupScreenViewModel viewModel;
+    private final StorageModeStepViewModel storageModeStepViewModel;
     private final RemoteStepView.Factory remoteStepViewFactory;
     private final RemoteStepViewViewModel remoteStepViewViewModel;
     private final GameRulesStepView.Factory gameRulesStepViewFactory;
@@ -35,12 +38,14 @@ public class SetupScreen extends JPanel implements AutoCloseable {
 
     private SetupScreen(
         SetupScreenViewModel viewModel,
+        StorageModeStepViewModel storageModeStepViewModel,
         RemoteStepView.Factory remoteStepViewFactory,
         RemoteStepViewViewModel remoteStepViewViewModel,
         GameRulesStepView.Factory gameRulesStepViewFactory,
         GameRulesStepViewViewModel gameRulesStepViewViewModel
     ) {
         this.viewModel = viewModel;
+        this.storageModeStepViewModel = storageModeStepViewModel;
         this.remoteStepViewFactory = remoteStepViewFactory;
         this.remoteStepViewViewModel = remoteStepViewViewModel;
         this.gameRulesStepViewFactory = gameRulesStepViewFactory;
@@ -64,11 +69,13 @@ public class SetupScreen extends JPanel implements AutoCloseable {
 
         inner.add(Box.createVerticalStrut(15));
 
-        JLabel getStartedLabel = new JLabel();
-        getStartedLabel.setText(
-            "<html><div style=\"text-align:center;\">Let's get you started by configuring settings for your account.</div></html>");
-        getStartedLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        inner.add(getStartedLabel);
+        JLabel getStartedLabelLine1 = new JLabel("Let's get you started by configuring");
+        getStartedLabelLine1.setAlignmentX(Component.CENTER_ALIGNMENT);
+        inner.add(getStartedLabelLine1);
+
+        JLabel getStartedLabelLine2 = new JLabel("settings for your account.");
+        getStartedLabelLine2.setAlignmentX(Component.CENTER_ALIGNMENT);
+        inner.add(getStartedLabelLine2);
 
         inner.add(Box.createVerticalStrut(10));
 
@@ -124,6 +131,8 @@ public class SetupScreen extends JPanel implements AutoCloseable {
 
     private JPanel buildStep(SetupScreenViewModel.Step step) {
         switch (step) {
+            case STORAGE_MODE_CHOICE:
+                return new StorageModeStepView(storageModeStepViewModel);
             case REMOTE:
                 return remoteStepViewFactory.create(remoteStepViewViewModel);
             case GAME_RULES:
@@ -147,6 +156,8 @@ public class SetupScreen extends JPanel implements AutoCloseable {
     static final class FactoryImpl implements Factory {
 
         @Inject
+        StorageModeStepViewModel.Factory storageModeStepViewModelFactory;
+        @Inject
         RemoteStepView.Factory remoteStepViewFactory;
         @Inject
         RemoteStepViewViewModel.Factory remoteStepViewViewModelFactory;
@@ -157,6 +168,8 @@ public class SetupScreen extends JPanel implements AutoCloseable {
 
         @Override
         public SetupScreen create(SetupScreenViewModel viewModel) {
+            StorageModeStepViewModel storageModeStepViewModel =
+                storageModeStepViewModelFactory.create(viewModel::onStorageModeChosen);
             RemoteStepViewViewModel remoteStepViewViewModel = remoteStepViewViewModelFactory.create(
                 viewModel::onRemoteStepFinished);
             GameRulesStepViewViewModel gameRulesStepViewViewModel = gameRulesStepViewViewModelFactory.create(
@@ -174,6 +187,7 @@ public class SetupScreen extends JPanel implements AutoCloseable {
             );
             return new SetupScreen(
                 viewModel,
+                storageModeStepViewModel,
                 remoteStepViewFactory,
                 remoteStepViewViewModel,
                 gameRulesStepViewFactory,

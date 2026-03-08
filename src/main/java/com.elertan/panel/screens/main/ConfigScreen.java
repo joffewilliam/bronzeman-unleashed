@@ -1,5 +1,6 @@
 package com.elertan.panel.screens.main;
 
+import com.elertan.panel.BUPanel;
 import com.elertan.panel.ViewportWidthTrackingPanel;
 import com.elertan.panel.components.GameRulesEditor;
 import com.elertan.panel.components.GameRulesEditorViewModel;
@@ -11,9 +12,12 @@ import com.google.inject.Singleton;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.util.Arrays;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -70,9 +74,19 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
         GameRulesEditor gameRulesEditor = gameRulesEditorFactory.create(gameRulesEditorViewModel);
+        // Constrain width so HTML labels in the editor wrap consistently when the panel is
+        // shown again (e.g. after leaving and re-opening); otherwise preferred height can
+        // be computed with wrong width and the rules screen looks "spaced out".
+        gameRulesEditor.setMaximumSize(new Dimension(BUPanel.PANEL_WIDTH - 22, Integer.MAX_VALUE));
 
         ViewportWidthTrackingPanel viewportWrapper = new ViewportWidthTrackingPanel(new BorderLayout());
         viewportWrapper.add(gameRulesEditor, BorderLayout.NORTH);
+        viewportWrapper.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                gameRulesEditor.revalidate();
+            }
+        });
 
         JScrollPane scrollPane = new JScrollPane(viewportWrapper);
         scrollPane.setBorder(null);

@@ -8,6 +8,7 @@ import com.elertan.models.GameRules;
 import com.elertan.models.GroundItemOwnedByData;
 import com.elertan.models.GroundItemOwnedByKey;
 import com.elertan.models.Member;
+import com.elertan.models.AccountConfiguration.StorageMode;
 import com.elertan.models.UnlockedItem;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabase;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabaseURL;
@@ -17,9 +18,14 @@ import com.elertan.remote.firebase.storageAdapters.GroundItemOwnedByKeyListStora
 import com.elertan.remote.firebase.storageAdapters.LastEventFirebaseObjectListStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.MembersFirebaseKeyValueStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.UnlockedItemsFirebaseKeyValueStorageAdapter;
+import com.elertan.remote.local.LocalStorageAdapters;
+import com.elertan.remote.local.NoOpAdapters;
 import com.elertan.utils.Observable;
 import com.elertan.utils.Subscription;
 import com.google.gson.Gson;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -36,7 +42,34 @@ import okhttp3.OkHttpClient;
 
 @Slf4j
 @Singleton
-public class RemoteStorageService implements BUPluginLifecycle {
+public class StorageService implements BUPluginLifecycle {
+
+    private static final String RELATIVE_DIR = ".runelite";
+    private static final String PLUGIN_DIR = "bronzeman-unleashed";
+
+    /**
+     * Returns the directory for a given account's local data. Does not create it.
+     */
+    public static Path getAccountStorageDir(long accountHash) {
+        String userHome = System.getProperty("user.home");
+        if (userHome == null || userHome.isEmpty()) {
+            userHome = ".";
+        }
+        return Paths.get(userHome, RELATIVE_DIR, PLUGIN_DIR, String.valueOf(accountHash));
+    }
+
+    /**
+     * Ensures the account storage directory exists. Returns the path or null on failure.
+     */
+    public static Path ensureAccountStorageDir(long accountHash) {
+        Path dir = getAccountStorageDir(accountHash);
+        try {
+            Files.createDirectories(dir);
+            return dir;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     @Getter
     private final Observable<State> state = Observable.of(State.NotReady);
@@ -80,28 +113,20 @@ public class RemoteStorageService implements BUPluginLifecycle {
     }
 
     /**
-     * Wait until remote storage is ready (state == State.Ready).
+     * Wait until storage is ready (state == State.Ready).
      */
     public CompletableFuture<State> await(Duration timeout) {
         return waitForValue(state, State.Ready, timeout);
     }
 
-    /**
-     * Waits for an Observable to emit a specific target value.
-     * Returns immediately if already at target, otherwise subscribes and waits.
-     * Includes race condition protection by re-checking after subscribe.
-     */
     private static <T> CompletableFuture<T> waitForValue(Observable<T> observable, T targetValue, Duration timeout) {
         CompletableFuture<T> future = new CompletableFuture<>();
 
-        // Fast path: already at target value
         if (observable.get() == targetValue) {
             future.complete(targetValue);
             return future;
         }
 
-        // Array wrapper needed because lambdas require effectively final variables,
-        // but we need to reference the subscription inside the lambda itself
         Subscription[] subscriptionHolder = new Subscription[1];
         subscriptionHolder[0] = observable.subscribe((newValue, oldValue) -> {
             if (newValue == targetValue && !future.isDone()) {
@@ -110,13 +135,11 @@ public class RemoteStorageService implements BUPluginLifecycle {
             }
         });
 
-        // Race condition check: value may have changed between get() and subscribe()
         if (observable.get() == targetValue && !future.isDone()) {
             subscriptionHolder[0].dispose();
             future.complete(targetValue);
         }
 
-        // Timeout handling
         if (timeout != null) {
             ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
             scheduler.schedule(() -> {
@@ -141,11 +164,56 @@ public class RemoteStorageService implements BUPluginLifecycle {
             return;
         }
 
-        // We can support different kinds of data ports here later
-        FirebaseRealtimeDatabaseURL url = accountConfiguration.getFirebaseRealtimeDatabaseURL();
-        configureFromFirebaseRealtimeDatabase(url);
+        if (accountConfiguration.getStorageMode() == StorageMode.LOCAL) {
+            configureFromLocalStorage(accountConfiguration);
+        } else {
+            FirebaseRealtimeDatabaseURL url = accountConfiguration.getFirebaseRealtimeDatabaseURL();
+            if (url == null) {
+                log.warn("Account configuration has no storage mode and no Firebase URL; skipping storage setup");
+                return;
+            }
+            configureFromFirebaseRealtimeDatabase(url);
+        }
 
         state.set(State.Ready);
+    }
+
+    private void configureFromLocalStorage(AccountConfiguration accountConfiguration) {
+        // Use hash stored with LOCAL config so we always use the same path (avoids wrong/empty path
+        // when config is applied off client thread or before client is ready after leave+new local).
+        Long storedHash = accountConfiguration.getLocalAccountHash();
+        long accountHash = storedHash != null ? storedHash : client.getAccountHash();
+        Path dir = ensureAccountStorageDir(accountHash);
+        if (dir == null) {
+            log.error("Failed to create local storage directory for account {}", accountHash);
+            return;
+        }
+
+        Path unlockedItemsFile = dir.resolve("UnlockedItems.json");
+        Path gameRulesFile = dir.resolve("GameRules.json");
+        Path groundItemOwnedByFile = dir.resolve("GroundItemOwnedBy.json");
+
+        unlockedItemsStoragePort = new LocalStorageAdapters.LocalKeyValueStorageAdapter<>(
+            unlockedItemsFile,
+            gson,
+            Object::toString,
+            Integer::valueOf,
+            UnlockedItem.class
+        );
+        gameRulesStoragePort = new LocalStorageAdapters.LocalObjectStorageAdapter<>(
+            gameRulesFile,
+            gson,
+            GameRules.class
+        );
+        groundItemOwnedByStoragePort = new LocalStorageAdapters.LocalKeyListStorageAdapter<>(
+            groundItemOwnedByFile,
+            gson,
+            GroundItemOwnedByKey::toKey,
+            GroundItemOwnedByKey::fromKey,
+            GroundItemOwnedByData.class
+        );
+        membersStoragePort = new NoOpAdapters.NoOpKeyValueStorageAdapter<>();
+        lastEventStoragePort = new NoOpAdapters.NoOpObjectListStorageAdapter<>();
     }
 
     private void clearCurrentDataport() throws Exception {

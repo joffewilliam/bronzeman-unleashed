@@ -4,14 +4,22 @@ import com.elertan.AccountConfigurationService;
 import com.elertan.BUPanelService;
 import com.elertan.models.AccountConfiguration;
 import com.elertan.models.GameRules;
+import com.elertan.models.ISOOffsetDateTime;
+import com.elertan.models.AccountConfiguration.StorageMode;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabase;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabaseURL;
 import com.elertan.remote.firebase.storageAdapters.GameRulesFirebaseObjectStorageAdapter;
+import com.elertan.remote.StorageService;
 import com.elertan.ui.Property;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
 import javax.swing.JOptionPane;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +29,7 @@ import okhttp3.OkHttpClient;
 @Slf4j
 public final class SetupScreenViewModel implements AutoCloseable {
 
-    public final Property<Step> step = new Property<>(Step.REMOTE);
+    public final Property<Step> step = new Property<>(Step.STORAGE_MODE_CHOICE);
     public final Property<Boolean> gameRulesAreViewOnly = new Property<>(null);
     public final Property<GameRules> gameRules = new Property<>(null);
     private final Client client;
@@ -29,6 +37,7 @@ public final class SetupScreenViewModel implements AutoCloseable {
     private final AccountConfigurationService accountConfigurationService;
     private final OkHttpClient httpClient;
     private final Gson gson;
+    private StorageMode chosenStorageMode;
     private FirebaseRealtimeDatabase firebaseRealtimeDatabase;
     private GameRulesFirebaseObjectStorageAdapter gameRulesStoragePort;
 
@@ -75,6 +84,23 @@ public final class SetupScreenViewModel implements AutoCloseable {
         accountConfigurationService.addCurrentAccountHashToAutoOpenConfigurationDisabled();
     }
 
+    public void onStorageModeChosen(StorageMode mode) {
+        chosenStorageMode = mode;
+        if (mode == StorageMode.LOCAL) {
+            gameRulesAreViewOnly.set(false);
+            // Set defaults so Finish works even when the Game Rules panel is reused (cached) and
+            // the editor constructor does not run again to push defaults.
+            long accountHash = client.getAccountHash();
+            gameRules.set(GameRules.createWithDefaults(
+                accountHash,
+                new ISOOffsetDateTime(OffsetDateTime.now())
+            ));
+            step.set(Step.GAME_RULES);
+        } else {
+            step.set(Step.REMOTE);
+        }
+    }
+
     public CompletableFuture<Void> onRemoteStepFinished(FirebaseRealtimeDatabaseURL url) {
         CompletableFuture<Void> future = new CompletableFuture<>();
 
@@ -97,6 +123,7 @@ public final class SetupScreenViewModel implements AutoCloseable {
             }
 
             this.gameRules.set(gameRules);
+            chosenStorageMode = StorageMode.FIREBASE;
 
             step.set(Step.GAME_RULES);
             future.complete(null);
@@ -106,16 +133,26 @@ public final class SetupScreenViewModel implements AutoCloseable {
     }
 
     public void onGameRulesStepBack() {
-        step.set(Step.REMOTE);
+        if (chosenStorageMode == StorageMode.LOCAL) {
+            step.set(Step.STORAGE_MODE_CHOICE);
+            chosenStorageMode = null;
+        } else {
+            step.set(Step.REMOTE);
+        }
+        gameRulesAreViewOnly.set(null);
         gameRules.set(null);
     }
 
     public CompletableFuture<Void> onGameRulesStepFinish() {
         CompletableFuture<Void> future = new CompletableFuture<>();
 
+        if (chosenStorageMode == StorageMode.LOCAL) {
+            finishLocalMode(future);
+            return future;
+        }
+
         if (gameRulesStoragePort == null) {
-            Exception ex = new IllegalStateException("The Firebase URL is not set yet");
-            future.completeExceptionally(ex);
+            future.completeExceptionally(new IllegalStateException("The Firebase URL is not set yet"));
             return future;
         }
 
@@ -127,13 +164,16 @@ public final class SetupScreenViewModel implements AutoCloseable {
         }
 
         Runnable finalize = () -> {
-            step.set(Step.REMOTE);
+            step.set(Step.STORAGE_MODE_CHOICE);
             gameRulesAreViewOnly.set(null);
             gameRules.set(null);
+            chosenStorageMode = null;
 
             long accountHash = client.getAccountHash();
             AccountConfiguration accountConfiguration = new AccountConfiguration(
-                firebaseRealtimeDatabase.getDatabaseURL());
+                StorageMode.FIREBASE,
+                firebaseRealtimeDatabase.getDatabaseURL(),
+                null);
             accountConfigurationService.setAccountConfiguration(accountConfiguration, accountHash);
 
             try {
@@ -179,7 +219,42 @@ public final class SetupScreenViewModel implements AutoCloseable {
         return future;
     }
 
+    private void finishLocalMode(CompletableFuture<Void> future) {
+        GameRules gameRulesValue = this.gameRules.get();
+        if (gameRulesValue == null) {
+            future.completeExceptionally(new IllegalStateException("Game rules are not set"));
+            return;
+        }
+
+        long accountHash = client.getAccountHash();
+        Path dir = StorageService.ensureAccountStorageDir(accountHash);
+        if (dir == null) {
+            future.completeExceptionally(new IllegalStateException("Failed to create local storage directory"));
+            return;
+        }
+
+        try {
+            Path gameRulesFile = dir.resolve("GameRules.json");
+            String json = new GsonBuilder().setPrettyPrinting().create().toJson(gson.toJsonTree(gameRulesValue));
+            Files.write(gameRulesFile, json.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+            return;
+        }
+
+        AccountConfiguration accountConfiguration = new AccountConfiguration(StorageMode.LOCAL, null, accountHash);
+        accountConfigurationService.setAccountConfiguration(accountConfiguration, accountHash);
+
+        step.set(Step.STORAGE_MODE_CHOICE);
+        gameRulesAreViewOnly.set(null);
+        gameRules.set(null);
+        chosenStorageMode = null;
+
+        future.complete(null);
+    }
+
     public enum Step {
+        STORAGE_MODE_CHOICE,
         REMOTE,
         GAME_RULES,
     }

@@ -1,6 +1,7 @@
 package com.elertan;
 
 import com.elertan.models.AccountConfiguration;
+import com.elertan.models.AccountConfiguration.StorageMode;
 import com.elertan.utils.Observable;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -189,8 +190,24 @@ public class AccountConfigurationService implements BUPluginLifecycle {
             // Defensive: gson can return null for malformed or "null" input
             parsed = new ConcurrentHashMap<>();
         }
-        setAccountConfigurationMap(new ConcurrentHashMap<>(parsed));
-        lastStoredAccountConfigurationMapJson = json;
+        // Backward compatibility: existing users have configs without storageMode (deserialized as null).
+        // Normalize to FIREBASE so in-memory and persisted config stay consistent.
+        ConcurrentHashMap<Long, AccountConfiguration> map = new ConcurrentHashMap<>(parsed);
+        boolean upgraded = false;
+        for (Map.Entry<Long, AccountConfiguration> e : map.entrySet()) {
+            AccountConfiguration c = e.getValue();
+            if (c != null && c.getStorageMode() == null && c.getFirebaseRealtimeDatabaseURL() != null) {
+                map.put(e.getKey(), new AccountConfiguration(StorageMode.FIREBASE, c.getFirebaseRealtimeDatabaseURL(), null));
+                upgraded = true;
+            }
+        }
+        if (upgraded) {
+            setAccountConfigurationMap(map);
+            storeAccountConfigurationMap();
+        } else {
+            setAccountConfigurationMap(map);
+            lastStoredAccountConfigurationMapJson = json;
+        }
     }
 
     private void initializeAutoOpenAccountConfigurationDisabledForAccountHashesFromConfig() {
