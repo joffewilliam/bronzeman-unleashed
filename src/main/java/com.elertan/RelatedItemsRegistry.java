@@ -12,6 +12,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import net.runelite.api.ItemComposition;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 
 /**
@@ -92,21 +93,21 @@ public final class RelatedItemsRegistry {
     // ── Herbs (clean ↔ grimy) ──────────────────────────────────────────────────
 
     private static void registerHerbs(Map<Integer, Set<Integer>> groups) {
-        registerGroup(groups, 249, 199);   // Guam leaf
-        registerGroup(groups, 251, 201);   // Marrentill
-        registerGroup(groups, 253, 203);   // Tarromin
-        registerGroup(groups, 255, 205);   // Harralander
-        registerGroup(groups, 257, 207);   // Ranarr weed
-        registerGroup(groups, 2998, 3049); // Toadflax
-        registerGroup(groups, 259, 209);   // Irit leaf
-        registerGroup(groups, 261, 211);   // Avantoe
-        registerGroup(groups, 263, 213);   // Kwuarm
-        registerGroup(groups, 12152, 12151); // Huasca
-        registerGroup(groups, 3000, 3051); // Snapdragon
-        registerGroup(groups, 265, 215);   // Cadantine
-        registerGroup(groups, 2481, 2485); // Lantadyme
-        registerGroup(groups, 267, 217);   // Dwarf weed
-        registerGroup(groups, 269, 219);   // Torstol
+        registerGroup(groups, ItemID.GUAM_LEAF, ItemID.UNIDENTIFIED_GUAM);                 // Guam leaf
+        registerGroup(groups, ItemID.MARENTILL, ItemID.UNIDENTIFIED_MARENTILL);           // Marrentill
+        registerGroup(groups, ItemID.TARROMIN, ItemID.UNIDENTIFIED_TARROMIN);             // Tarromin
+        registerGroup(groups, ItemID.HARRALANDER, ItemID.UNIDENTIFIED_HARRALANDER);       // Harralander
+        registerGroup(groups, ItemID.RANARR_WEED, ItemID.UNIDENTIFIED_RANARR);            // Ranarr weed
+        registerGroup(groups, ItemID.TOADFLAX, ItemID.UNIDENTIFIED_TOADFLAX);             // Toadflax
+        registerGroup(groups, ItemID.IRIT_LEAF, ItemID.UNIDENTIFIED_IRIT);                // Irit leaf
+        registerGroup(groups, ItemID.AVANTOE, ItemID.UNIDENTIFIED_AVANTOE);               // Avantoe
+        registerGroup(groups, ItemID.KWUARM, ItemID.UNIDENTIFIED_KWUARM);                 // Kwuarm
+        registerGroup(groups, ItemID.TRAIL_ELITE_RIDDLE_EXP13, ItemID.TRAIL_ELITE_RIDDLE_EXP12); // Huasca
+        registerGroup(groups, ItemID.SNAPDRAGON, ItemID.UNIDENTIFIED_SNAPDRAGON);         // Snapdragon
+        registerGroup(groups, ItemID.CADANTINE, ItemID.UNIDENTIFIED_CADANTINE);           // Cadantine
+        registerGroup(groups, ItemID.LANTADYME, ItemID.UNIDENTIFIED_LANTADYME);           // Lantadyme
+        registerGroup(groups, ItemID.DWARF_WEED, ItemID.UNIDENTIFIED_DWARF_WEED);         // Dwarf weed
+        registerGroup(groups, ItemID.TORSTOL, ItemID.UNIDENTIFIED_TORSTOL);               // Torstol
     }
 
     /**
@@ -198,40 +199,40 @@ public final class RelatedItemsRegistry {
 
     private static void registerBarrowsEquipment(Map<Integer, Set<Integer>> groups) {
         // Ahrim's
-        registerBarrowsPiece(groups, 4708, 4856); // Hood
-        registerBarrowsPiece(groups, 4710, 4862); // Staff
-        registerBarrowsPiece(groups, 4712, 4868); // Robetop
-        registerBarrowsPiece(groups, 4714, 4874); // Robeskirt
+        registerBarrowsPiece(groups, ItemID.BARROWS_AHRIM_HEAD, ItemID.BARROWS_AHRIM_HEAD_100);       // Hood
+        registerBarrowsPiece(groups, ItemID.BARROWS_AHRIM_WEAPON, ItemID.BARROWS_AHRIM_WEAPON_100);   // Staff
+        registerBarrowsPiece(groups, ItemID.BARROWS_AHRIM_BODY, ItemID.BARROWS_AHRIM_BODY_100);       // Robetop
+        registerBarrowsPiece(groups, ItemID.BARROWS_AHRIM_LEGS, ItemID.BARROWS_AHRIM_LEGS_100);       // Robeskirt
 
         // Dharok's
-        registerBarrowsPiece(groups, 4716, 4880); // Helm
-        registerBarrowsPiece(groups, 4718, 4886); // Greataxe
-        registerBarrowsPiece(groups, 4720, 4892); // Platebody
-        registerBarrowsPiece(groups, 4722, 4898); // Platelegs
+        registerBarrowsPiece(groups, ItemID.BARROWS_DHAROK_HEAD, ItemID.BARROWS_DHAROK_HEAD_100);     // Helm
+        registerBarrowsPiece(groups, ItemID.BARROWS_DHAROK_WEAPON, ItemID.BARROWS_DHAROK_WEAPON_100); // Greataxe
+        registerBarrowsPiece(groups, ItemID.BARROWS_DHAROK_BODY, ItemID.BARROWS_DHAROK_BODY_100);     // Platebody
+        registerBarrowsPiece(groups, ItemID.BARROWS_DHAROK_LEGS, ItemID.BARROWS_DHAROK_LEGS_100);     // Platelegs
 
         // Guthan's
-        registerBarrowsPiece(groups, 4724, 4904); // Helm
-        registerBarrowsPiece(groups, 4726, 4910); // Warspear
-        registerBarrowsPiece(groups, 4728, 4916); // Platebody
-        registerBarrowsPiece(groups, 4730, 4922); // Chainskirt
+        registerBarrowsPiece(groups, ItemID.BARROWS_GUTHAN_HEAD, ItemID.BARROWS_GUTHAN_HEAD_100);     // Helm
+        registerBarrowsPiece(groups, ItemID.BARROWS_GUTHAN_WEAPON, ItemID.BARROWS_GUTHAN_WEAPON_100); // Warspear
+        registerBarrowsPiece(groups, ItemID.BARROWS_GUTHAN_BODY, ItemID.BARROWS_GUTHAN_BODY_100);     // Platebody
+        registerBarrowsPiece(groups, ItemID.BARROWS_GUTHAN_LEGS, ItemID.BARROWS_GUTHAN_LEGS_100);     // Chainskirt
 
         // Karil's
-        registerBarrowsPiece(groups, 4732, 4928); // Coif
-        registerBarrowsPiece(groups, 4734, 4934); // Crossbow
-        registerBarrowsPiece(groups, 4736, 4940); // Leathertop
-        registerBarrowsPiece(groups, 4738, 4946); // Leatherskirt
+        registerBarrowsPiece(groups, ItemID.BARROWS_KARIL_HEAD, ItemID.BARROWS_KARIL_HEAD_100);       // Coif
+        registerBarrowsPiece(groups, ItemID.BARROWS_KARIL_WEAPON, ItemID.BARROWS_KARIL_WEAPON_100);   // Crossbow
+        registerBarrowsPiece(groups, ItemID.BARROWS_KARIL_BODY, ItemID.BARROWS_KARIL_BODY_100);       // Leathertop
+        registerBarrowsPiece(groups, ItemID.BARROWS_KARIL_LEGS, ItemID.BARROWS_KARIL_LEGS_100);       // Leatherskirt
 
         // Torag's
-        registerBarrowsPiece(groups, 4745, 4952); // Helm
-        registerBarrowsPiece(groups, 4747, 4958); // Hammers
-        registerBarrowsPiece(groups, 4749, 4964); // Platebody
-        registerBarrowsPiece(groups, 4751, 4970); // Platelegs
+        registerBarrowsPiece(groups, ItemID.BARROWS_TORAG_HEAD, ItemID.BARROWS_TORAG_HEAD_100);       // Helm
+        registerBarrowsPiece(groups, ItemID.BARROWS_TORAG_WEAPON, ItemID.BARROWS_TORAG_WEAPON_100);   // Hammers
+        registerBarrowsPiece(groups, ItemID.BARROWS_TORAG_BODY, ItemID.BARROWS_TORAG_BODY_100);       // Platebody
+        registerBarrowsPiece(groups, ItemID.BARROWS_TORAG_LEGS, ItemID.BARROWS_TORAG_LEGS_100);       // Platelegs
 
         // Verac's
-        registerBarrowsPiece(groups, 4753, 4976); // Helm
-        registerBarrowsPiece(groups, 4755, 4982); // Flail
-        registerBarrowsPiece(groups, 4757, 4988); // Brassard
-        registerBarrowsPiece(groups, 4759, 4994); // Plateskirt
+        registerBarrowsPiece(groups, ItemID.BARROWS_VERAC_HEAD, ItemID.BARROWS_VERAC_HEAD_100);       // Helm
+        registerBarrowsPiece(groups, ItemID.BARROWS_VERAC_WEAPON, ItemID.BARROWS_VERAC_WEAPON_100);   // Flail
+        registerBarrowsPiece(groups, ItemID.BARROWS_VERAC_BODY, ItemID.BARROWS_VERAC_BODY_100);       // Brassard
+        registerBarrowsPiece(groups, ItemID.BARROWS_VERAC_LEGS, ItemID.BARROWS_VERAC_LEGS_100);       // Plateskirt
     }
 
     /**
@@ -257,19 +258,19 @@ public final class RelatedItemsRegistry {
 
     private static void registerMoonsEquipment(Map<Integer, Set<Integer>> groups) {
         // Eclipse Moon
-        registerGroup(groups, 29004, 29049); // Chestplate / Broken
-        registerGroup(groups, 29007, 29052); // Tassets / Broken
-        registerGroup(groups, 29010, 29055); // Helm / Broken
+        registerGroup(groups, ItemID.ECLIPSE_MOON_CHESTPLATE, ItemID.ECLIPSE_MOON_CHESTPLATE_BROKEN); // Chestplate / Broken
+        registerGroup(groups, ItemID.ECLIPSE_MOON_TASSETS, ItemID.ECLIPSE_MOON_TASSETS_BROKEN);       // Tassets / Broken
+        registerGroup(groups, ItemID.ECLIPSE_MOON_HELM, ItemID.ECLIPSE_MOON_HELM_BROKEN);             // Helm / Broken
 
-        // Blue Moon
-        registerGroup(groups, 29013, 29058); // Chestplate / Broken
-        registerGroup(groups, 29016, 29061); // Tassets / Broken
-        registerGroup(groups, 29019, 29064); // Helm / Broken
+        // Frost (Blue) Moon
+        registerGroup(groups, ItemID.FROST_MOON_CHESTPLATE, ItemID.FROST_MOON_CHESTPLATE_BROKEN);     // Chestplate / Broken
+        registerGroup(groups, ItemID.FROST_MOON_TASSETS, ItemID.FROST_MOON_TASSETS_BROKEN);           // Tassets / Broken
+        registerGroup(groups, ItemID.FROST_MOON_HELM, ItemID.FROST_MOON_HELM_BROKEN);                 // Helm / Broken
 
         // Blood Moon
-        registerGroup(groups, 29022, 29067); // Chestplate / Broken
-        registerGroup(groups, 29025, 29070); // Tassets / Broken
-        registerGroup(groups, 29028, 29073); // Helm / Broken
+        registerGroup(groups, ItemID.BLOOD_MOON_CHESTPLATE, ItemID.BLOOD_MOON_CHESTPLATE_BROKEN);     // Chestplate / Broken
+        registerGroup(groups, ItemID.BLOOD_MOON_TASSETS, ItemID.BLOOD_MOON_TASSETS_BROKEN);           // Tassets / Broken
+        registerGroup(groups, ItemID.BLOOD_MOON_HELM, ItemID.BLOOD_MOON_HELM_BROKEN);                 // Helm / Broken
     }
 
     // ── Recipe rules (tertiary / upgrade unlocks) ─────────────────────────────
@@ -279,13 +280,11 @@ public final class RelatedItemsRegistry {
 
     private static void registerRecipes(Set<RecipeRule> recipes) {
         // Amulet of torture + Maple longbow (u) → Amulet of rancour
-        // Item IDs from RuneLite's net.runelite.api.ItemID:
-        // AMULET_OF_TORTURE = 19553
-        // MAPLE_LONGBOW_U = 62
-        // AMULET_OF_RANCOUR = 29801
         recipes.add(new RecipeRule(
-            IntStream.of(19553, 62).boxed().collect(Collectors.toUnmodifiableSet()),
-            Collections.singleton(29801)
+            IntStream.of(ItemID.ZENYTE_AMULET_ENCHANTED, ItemID.UNSTRUNG_MAPLE_LONGBOW)
+                .boxed()
+                .collect(Collectors.toUnmodifiableSet()),
+            Collections.singleton(ItemID.AMULET_OF_RANCOUR)
         ));
 
         // Future recipes can be added here following the same pattern.
