@@ -127,6 +127,21 @@ public class UnlockedItemsDataProvider extends AbstractDataProvider {
         return keyValueStoragePort.update(unlockedItem.getId(), unlockedItem);
     }
 
+    /**
+     * Replaces the entire unlocked-items map in storage and memory without firing per-item update
+     * callbacks. Intended for one-off migrations and backfills where emitting historical unlock
+     * notifications would be noisy.
+     */
+    public CompletableFuture<Void> replaceAllUnlockedItems(Map<Integer, UnlockedItem> newMap) {
+        if (getState().get() != State.Ready) {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            future.completeExceptionally(new IllegalStateException("State is not ready"));
+            return future;
+        }
+        unlockedItemsMap = new ConcurrentHashMap<>(newMap);
+        return keyValueStoragePort.updateAll(newMap);
+    }
+
     public CompletableFuture<Void> removeUnlockedItemById(int itemId) {
         if (getState().get() != State.Ready) {
             CompletableFuture<Void> future = new CompletableFuture<>();
