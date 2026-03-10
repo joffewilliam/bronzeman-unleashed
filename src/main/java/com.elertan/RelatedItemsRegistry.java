@@ -1,5 +1,6 @@
 package com.elertan;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -7,7 +8,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import net.runelite.api.ItemID;
 
 /**
  * Resolves relationships between items for unlocking.
@@ -15,7 +15,8 @@ import net.runelite.api.ItemID;
  * - Equivalent item groups (e.g. all doses of a potion, clean/grimy herb variants, broken/normal armor).
  * - Recipe-style relationships (e.g. if ingredients A and B are unlocked, unlock result C).
  *
- * Item IDs referenced below are taken from RuneLite numeric item IDs.
+ * Item IDs referenced below are taken from RuneLite's net.runelite.api.ItemID constants (numeric
+ * values) and stored as raw integers to avoid relying on a particular gameval ItemID API surface.
  */
 public final class RelatedItemsRegistry {
 
@@ -32,43 +33,47 @@ public final class RelatedItemsRegistry {
 
     /**
      * Creates a default registry with curated equivalence groups for common item variants:
-     * clean↔grimy herbs, and broken/degraded↔repaired armor (Barrows, Moons of Peril), plus
-     * explicit recipe mappings.
+     * clean↔grimy herbs, and broken/degraded↔repaired armor (Barrows, Moons of Peril).
      */
     public static RelatedItemsRegistry createDefault() {
         Map<Integer, Set<Integer>> groups = new HashMap<>();
-        Set<RecipeRule> recipes = new HashSet<>();
 
         registerHerbs(groups);
         registerBarrowsEquipment(groups);
         registerMoonsEquipment(groups);
-        registerRecipes(recipes);
 
         return new RelatedItemsRegistry(
             Collections.unmodifiableMap(groups),
-            Collections.unmodifiableSet(recipes)
+            Collections.emptySet()
         );
     }
 
-    // Herbs (clean ↔ grimy)
+    // ── Herbs (clean ↔ grimy) ──────────────────────────────────────────────────
+
     private static void registerHerbs(Map<Integer, Set<Integer>> groups) {
         registerGroup(groups, 249, 199);   // Guam leaf
         registerGroup(groups, 251, 201);   // Marrentill
         registerGroup(groups, 253, 203);   // Tarromin
         registerGroup(groups, 255, 205);   // Harralander
         registerGroup(groups, 257, 207);   // Ranarr weed
+        registerGroup(groups, 2998, 3049); // Toadflax
         registerGroup(groups, 259, 209);   // Irit leaf
         registerGroup(groups, 261, 211);   // Avantoe
         registerGroup(groups, 263, 213);   // Kwuarm
+        registerGroup(groups, 12152, 12151); // Huasca
+        registerGroup(groups, 3000, 3051); // Snapdragon
         registerGroup(groups, 265, 215);   // Cadantine
+        registerGroup(groups, 2481, 2485); // Lantadyme
         registerGroup(groups, 267, 217);   // Dwarf weed
         registerGroup(groups, 269, 219);   // Torstol
-        registerGroup(groups, 2481, 2485); // Lantadyme
-        registerGroup(groups, 2998, 3049); // Toadflax
-        registerGroup(groups, 1526, 1525); // Snake weed
     }
 
-    // Barrows equipment (base + 100/75/50/25/0 degradation states)
+    // ── Barrows equipment (base + 100/75/50/25/0 degradation states) ───────────
+    //
+    // Each Barrows piece has a base (fully repaired, tradeable) item and five
+    // degraded variants. A player who unlocks any of these should be considered
+    // to have unlocked the item.
+
     private static void registerBarrowsEquipment(Map<Integer, Set<Integer>> groups) {
         // Ahrim's
         registerBarrowsPiece(groups, 4708, 4856); // Hood
@@ -107,6 +112,10 @@ public final class RelatedItemsRegistry {
         registerBarrowsPiece(groups, 4759, 4994); // Plateskirt
     }
 
+    /**
+     * Registers a Barrows piece. Degraded variants are at consecutive IDs:
+     * base100, base100+1 (75), base100+2 (50), base100+3 (25), base100+4 (0).
+     */
     private static void registerBarrowsPiece(
         Map<Integer, Set<Integer>> groups,
         int baseId,
@@ -114,15 +123,16 @@ public final class RelatedItemsRegistry {
     ) {
         registerGroup(groups,
             baseId,
-            base100Id,
-            base100Id + 1,
-            base100Id + 2,
-            base100Id + 3,
-            base100Id + 4
+            base100Id,      // 100
+            base100Id + 1,  // 75
+            base100Id + 2,  // 50
+            base100Id + 3,  // 25
+            base100Id + 4   // 0
         );
     }
 
-    // Moons of Peril equipment (normal ↔ broken)
+    // ── Moons of Peril equipment (normal ↔ broken) ────────────────────────────
+
     private static void registerMoonsEquipment(Map<Integer, Set<Integer>> groups) {
         // Eclipse Moon
         registerGroup(groups, 29004, 29049); // Chestplate / Broken
@@ -140,16 +150,7 @@ public final class RelatedItemsRegistry {
         registerGroup(groups, 29028, 29073); // Helm / Broken
     }
 
-    private static void registerRecipes(Set<RecipeRule> recipes) {
-        // Note: RuneLite does not expose a stable ItemID constant for amulet of torture in this
-        // API version, so we use the known game item ID directly.
-        recipes.add(new RecipeRule(
-            IntStream.of(ItemID.ARAXYTE_FANG, 19553)
-                .boxed()
-                .collect(Collectors.toUnmodifiableSet()),
-            Collections.singleton(ItemID.AMULET_OF_RANCOUR)
-        ));
-    }
+    // ── Registration helpers ───────────────────────────────────────────────────
 
     private static void registerGroup(Map<Integer, Set<Integer>> groups, int... ids) {
         Set<Integer> group = IntStream.of(ids)
@@ -160,11 +161,18 @@ public final class RelatedItemsRegistry {
         }
     }
 
+    /**
+     * Returns the full set of item IDs that are considered equivalent to the given item ID,
+     * including the given ID itself. If no mapping exists, a singleton set containing only
+     * {@code itemId} is returned.
+     */
     public Set<Integer> getEquivalentItemIds(int itemId) {
         Set<Integer> group = equivalenceGroups.get(itemId);
         if (group == null || group.isEmpty()) {
             return Collections.singleton(itemId);
         }
+        // Always include the queried ID to keep behavior predictable when the group was
+        // registered under a different representative.
         if (group.contains(itemId)) {
             return Collections.unmodifiableSet(group);
         }
@@ -173,6 +181,14 @@ public final class RelatedItemsRegistry {
         return Collections.unmodifiableSet(copy);
     }
 
+    /**
+     * Given the set of currently unlocked item IDs, returns the set of additional item IDs that
+     * should become unlocked because all of their recipe ingredients are present in the unlocked
+     * set.
+     *
+     * This method does not mutate the input. Callers are responsible for filtering out results
+     * that are already unlocked if they want strictly new unlocks.
+     */
     public Set<Integer> getRecipeResultItemIds(Set<Integer> unlockedItemIds) {
         if (recipeRules.isEmpty() || unlockedItemIds.isEmpty()) {
             return Collections.emptySet();
@@ -206,3 +222,4 @@ public final class RelatedItemsRegistry {
         }
     }
 }
+

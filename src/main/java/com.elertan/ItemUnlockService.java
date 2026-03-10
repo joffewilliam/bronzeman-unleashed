@@ -643,7 +643,41 @@ public class ItemUnlockService implements BUPluginLifecycle {
             if (map == null) {
                 throw new IllegalStateException("Unlocked items map is null");
             }
-            int unlockedItemsSize = map.size();
+
+            // Backfill equivalent variants (herbs, Barrows, Moons, etc.) for existing unlocks
+            // using the related-items registry. This only ever expands the current map and writes
+            // it back in a single bulk update so we don't spam overlays or chat for historical
+            // items.
+            Map<Integer, UnlockedItem> expandedMap = new HashMap<>(map);
+            for (UnlockedItem existing : map.values()) {
+                int baseItemId = existing.getId();
+                Set<Integer> equivalents = relatedItemsRegistry.getEquivalentItemIds(baseItemId);
+                for (int equivalentId : equivalents) {
+                    if (expandedMap.containsKey(equivalentId)) {
+                        continue;
+                    }
+
+                    ItemComposition equivalentComposition = client.getItemDefinition(equivalentId);
+                    String equivalentName = equivalentComposition.getName();
+                    UnlockedItem equivalentUnlockedItem = new UnlockedItem(
+                        equivalentId,
+                        equivalentName,
+                        existing.getAcquiredByAccountHash(),
+                        existing.getAcquiredAt(),
+                        existing.getDroppedByNPCId()
+                    );
+                    expandedMap.put(equivalentId, equivalentUnlockedItem);
+                }
+            }
+
+            int unlockedItemsSize = expandedMap.size();
+            if (expandedMap.size() != map.size()) {
+                withErrorLogging(
+                    unlockedItemsDataProvider.replaceAllUnlockedItems(expandedMap),
+                    "Failed to backfill equivalent unlocked items"
+                );
+            }
+
             buChatService.sendMessage(String.format(
                 "Loaded with %d unlocked items.",
                 unlockedItemsSize
