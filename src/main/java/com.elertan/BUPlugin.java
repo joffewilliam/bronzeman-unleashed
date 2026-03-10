@@ -184,8 +184,8 @@ public final class BUPlugin extends Plugin {
     }
 
     @Provides
-    RelatedItemsRegistry provideRelatedItemsRegistry(net.runelite.client.game.ItemManager itemManager) {
-        return RelatedItemsRegistry.createDefault(itemManager);
+    RelatedItemsRegistry provideRelatedItemsRegistry() {
+        return RelatedItemsRegistry.createDefault();
     }
 
     @Override

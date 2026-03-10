@@ -541,9 +541,8 @@ public class ItemUnlockService implements BUPluginLifecycle {
                 Set<Integer> ownedIdsForRecipes = new HashSet<>(currentUnlockedItems.keySet());
                 ownedIdsForRecipes.addAll(equivalentItemIds);
 
-                Set<Integer> recipeResultIds = gameRules.isEnableRecipeDerivedUnlocks()
-                    ? relatedItemsRegistry.getRecipeResultItemIds(ownedIdsForRecipes)
-                    : Collections.emptySet();
+                Set<Integer> recipeResultIds =
+                    relatedItemsRegistry.getRecipeResultItemIds(ownedIdsForRecipes);
 
                 // Create additional unlocks for equivalent and recipe result IDs that are not yet
                 // unlocked. Keep the same acquiredAt/acquiredBy metadata so they look like a single
@@ -561,6 +560,15 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
                     ItemComposition equivalentComposition = client.getItemDefinition(equivalentId);
                     String equivalentName = equivalentComposition.getName();
+                    // Avoid double-unlocking items that are effectively identical: if an equivalent
+                    // shares the exact same display name as the primary item (e.g. duplicate
+                    // Sanfew serum IDs), skip creating a second unlocked entry that would show as a
+                    // duplicate in overlays and lists.
+                    if (equivalentName != null
+                        && equivalentName.equals(fItemName)) {
+                        continue;
+                    }
+
                     UnlockedItem equivalentUnlockedItem = new UnlockedItem(
                         equivalentId,
                         equivalentName,
@@ -576,13 +584,6 @@ public class ItemUnlockService implements BUPluginLifecycle {
                         continue;
                     }
                     if (currentUnlockedItems.containsKey(resultId)) {
-                        continue;
-                    }
-
-                    // Interaction with "Only for tradeable items":
-                    // when enabled, derived recipe unlocks should only apply to tradeable results.
-                    if (gameRules.isOnlyForTradeableItems()
-                        && !client.getItemDefinition(resultId).isTradeable()) {
                         continue;
                     }
 
@@ -639,15 +640,18 @@ public class ItemUnlockService implements BUPluginLifecycle {
 //        hasUnlockedItemDataProviderReadyStateBeenSeen = true;
 
         clientThread.invokeLater(() -> {
+            // Potion dose families require live item cache data which is only available on the
+            // client thread after the game cache has loaded. Register them now before the backfill.
+            relatedItemsRegistry.ensurePotionsRegistered(itemManager);
+
             Map<Integer, UnlockedItem> map = unlockedItemsDataProvider.getUnlockedItemsMap();
             if (map == null) {
                 throw new IllegalStateException("Unlocked items map is null");
             }
 
-            // Backfill equivalent variants (herbs, Barrows, Moons, etc.) for existing unlocks
-            // using the related-items registry. This only ever expands the current map and writes
-            // it back in a single bulk update so we don't spam overlays or chat for historical
-            // items.
+            // Backfill equivalent variants (herbs, potions, Barrows, Moons, etc.) and recipe-based
+            // results for existing unlocks. This only ever expands the current map and writes it
+            // back in a single bulk update so we don't spam overlays or chat for historical items.
             Map<Integer, UnlockedItem> expandedMap = new HashMap<>(map);
             for (UnlockedItem existing : map.values()) {
                 int baseItemId = existing.getId();
@@ -659,6 +663,15 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
                     ItemComposition equivalentComposition = client.getItemDefinition(equivalentId);
                     String equivalentName = equivalentComposition.getName();
+                    // Some items (notably a few potions like Sanfew serum) have multiple item IDs
+                    // with exactly the same display name. Treat those as true duplicates and avoid
+                    // creating a second unlocked entry that would show up as a double unlock in
+                    // the UI.
+                    if (equivalentName != null
+                        && equivalentName.equals(existing.getName())) {
+                        continue;
+                    }
+
                     UnlockedItem equivalentUnlockedItem = new UnlockedItem(
                         equivalentId,
                         equivalentName,
@@ -668,6 +681,29 @@ public class ItemUnlockService implements BUPluginLifecycle {
                     );
                     expandedMap.put(equivalentId, equivalentUnlockedItem);
                 }
+            }
+
+            // After equivalence expansion, apply recipe rules once over the expanded ID set.
+            Set<Integer> ownedIds = new HashSet<>(expandedMap.keySet());
+            Set<Integer> recipeResults = relatedItemsRegistry.getRecipeResultItemIds(ownedIds);
+            for (int resultId : recipeResults) {
+                if (expandedMap.containsKey(resultId)) {
+                    continue;
+                }
+
+                ItemComposition resultComposition = client.getItemDefinition(resultId);
+                String resultName = resultComposition.getName();
+                // Attribute recipe results to an arbitrary existing item for acquiredAt/account
+                // metadata; this is purely cosmetic for historical backfill.
+                UnlockedItem template = map.values().iterator().next();
+                UnlockedItem resultUnlockedItem = new UnlockedItem(
+                    resultId,
+                    resultName,
+                    template.getAcquiredByAccountHash(),
+                    template.getAcquiredAt(),
+                    template.getDroppedByNPCId()
+                );
+                expandedMap.put(resultId, resultUnlockedItem);
             }
 
             int unlockedItemsSize = expandedMap.size();

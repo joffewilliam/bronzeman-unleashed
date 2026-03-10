@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -40,14 +41,15 @@ public final class RelatedItemsRegistry {
      */
     private static final Pattern DOSE_PATTERN = Pattern.compile("^(.*)\\((\\d)\\)$");
 
-    private final Map<Integer, Set<Integer>> equivalenceGroups;
+    private final ConcurrentHashMap<Integer, Set<Integer>> equivalenceGroups;
     private final Set<RecipeRule> recipeRules;
+    private volatile boolean potionsRegistered = false;
 
     public RelatedItemsRegistry(
         Map<Integer, Set<Integer>> equivalenceGroups,
         Set<RecipeRule> recipeRules
     ) {
-        this.equivalenceGroups = equivalenceGroups;
+        this.equivalenceGroups = new ConcurrentHashMap<>(equivalenceGroups);
         this.recipeRules = recipeRules;
     }
 
@@ -55,24 +57,36 @@ public final class RelatedItemsRegistry {
      * Creates a default registry with curated equivalence groups and recipe rules for common
      * relationships:
      * - clean↔grimy herbs
-     * - potion dose variants discovered automatically from item metadata
      * - broken/degraded↔repaired armor (Barrows, Moons of Peril)
      * - high-value crafted upgrades (e.g. amulet of torture + Araxyte fang → amulet of rancour)
+     *
+     * Potion dose families are NOT registered here because they require live item cache data
+     * from {@link ItemManager} which is only available on the client thread after the game
+     * cache loads. Call {@link #ensurePotionsRegistered(ItemManager)} on the client thread
+     * before querying potion equivalence.
      */
-    public static RelatedItemsRegistry createDefault(ItemManager itemManager) {
+    public static RelatedItemsRegistry createDefault() {
         Map<Integer, Set<Integer>> groups = new HashMap<>();
         Set<RecipeRule> recipes = new HashSet<>();
 
         registerHerbs(groups);
-        registerPotionsAutomatically(groups, itemManager);
         registerBarrowsEquipment(groups);
         registerMoonsEquipment(groups);
         registerRecipes(recipes);
 
-        return new RelatedItemsRegistry(
-            Collections.unmodifiableMap(groups),
-            Collections.unmodifiableSet(recipes)
-        );
+        return new RelatedItemsRegistry(groups, Collections.unmodifiableSet(recipes));
+    }
+
+    /**
+     * Lazily discovers and registers all potion dose families from the live item cache.
+     * Must be called on the client thread. Safe to call multiple times — only runs once.
+     */
+    public synchronized void ensurePotionsRegistered(ItemManager itemManager) {
+        if (potionsRegistered) {
+            return;
+        }
+        registerPotionsAutomatically(this.equivalenceGroups, itemManager);
+        potionsRegistered = true;
     }
 
     // ── Herbs (clean ↔ grimy) ──────────────────────────────────────────────────
@@ -123,8 +137,9 @@ public final class RelatedItemsRegistry {
                 continue;
             }
 
-            // Skip noted and placeholder variants – we only care about the actual drinkable item.
-            if (item.getNote() != -1 || item.getPlaceholderTemplateId() != -1) {
+            // Skip placeholder variants – we only care about actual items. Noted variants are fine;
+            // they share the same name pattern and will end up in the same family.
+            if (item.getPlaceholderTemplateId() != -1) {
                 continue;
             }
 
@@ -263,13 +278,13 @@ public final class RelatedItemsRegistry {
     // result, even if the player has never physically created or obtained the result yet.
 
     private static void registerRecipes(Set<RecipeRule> recipes) {
-        // Amulet of torture + Araxyte fang → Amulet of rancour
+        // Amulet of torture + Maple longbow (u) → Amulet of rancour
         // Item IDs from RuneLite's net.runelite.api.ItemID:
         // AMULET_OF_TORTURE = 19553
-        // ARAXYTE_FANG = 29799
+        // MAPLE_LONGBOW_U = 62
         // AMULET_OF_RANCOUR = 29801
         recipes.add(new RecipeRule(
-            IntStream.of(19553, 29799).boxed().collect(Collectors.toUnmodifiableSet()),
+            IntStream.of(19553, 62).boxed().collect(Collectors.toUnmodifiableSet()),
             Collections.singleton(29801)
         ));
 
