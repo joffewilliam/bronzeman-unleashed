@@ -6,8 +6,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import net.runelite.api.ItemComposition;
+import net.runelite.client.game.ItemManager;
 
 /**
  * Resolves relationships between items for unlocking.
@@ -19,6 +23,22 @@ import java.util.stream.IntStream;
  * values) and stored as raw integers to avoid relying on a particular gameval ItemID API surface.
  */
 public final class RelatedItemsRegistry {
+
+    /**
+     * Upper bound for scanning item IDs when auto-discovering potion dose families. Chosen to be
+     * comfortably above the current live item ID range while remaining cheap to iterate once at
+     * startup.
+     */
+    private static final int MAX_ITEM_ID_SCAN = 40_000;
+
+    /**
+     * Matches names like "Saradomin brew(4)" or "Stamina potion(1)" and captures the shared family
+     * name and the numeric dose count.
+     *
+     * group(1) = base name (e.g. "Saradomin brew")
+     * group(2) = dose number (e.g. "4")
+     */
+    private static final Pattern DOSE_PATTERN = Pattern.compile("^(.*)\\((\\d)\\)$");
 
     private final Map<Integer, Set<Integer>> equivalenceGroups;
     private final Set<RecipeRule> recipeRules;
@@ -32,19 +52,26 @@ public final class RelatedItemsRegistry {
     }
 
     /**
-     * Creates a default registry with curated equivalence groups for common item variants:
-     * clean↔grimy herbs, and broken/degraded↔repaired armor (Barrows, Moons of Peril).
+     * Creates a default registry with curated equivalence groups and recipe rules for common
+     * relationships:
+     * - clean↔grimy herbs
+     * - potion dose variants discovered automatically from item metadata
+     * - broken/degraded↔repaired armor (Barrows, Moons of Peril)
+     * - high-value crafted upgrades (e.g. amulet of torture + Araxyte fang → amulet of rancour)
      */
-    public static RelatedItemsRegistry createDefault() {
+    public static RelatedItemsRegistry createDefault(ItemManager itemManager) {
         Map<Integer, Set<Integer>> groups = new HashMap<>();
+        Set<RecipeRule> recipes = new HashSet<>();
 
         registerHerbs(groups);
+        registerPotionsAutomatically(groups, itemManager);
         registerBarrowsEquipment(groups);
         registerMoonsEquipment(groups);
+        registerRecipes(recipes);
 
         return new RelatedItemsRegistry(
             Collections.unmodifiableMap(groups),
-            Collections.emptySet()
+            Collections.unmodifiableSet(recipes)
         );
     }
 
@@ -66,6 +93,86 @@ public final class RelatedItemsRegistry {
         registerGroup(groups, 2481, 2485); // Lantadyme
         registerGroup(groups, 267, 217);   // Dwarf weed
         registerGroup(groups, 269, 219);   // Torstol
+    }
+
+    /**
+     * Automatically discovers potion dose families from live item metadata using RuneLite's
+     * {@link ItemManager}. This scans the item ID space once, finds items whose names end in
+     * "(1)"–"(4)" and which have a "Drink" inventory action, and groups them by base name.
+     *
+     * For example, this will group:
+     * - "Saradomin brew(1)"–"(4)"
+     * - "Anti-venom+(1)"–"(4)"
+     * - "Ancient brew(1)"–"(4)"
+     * - all divine potions, future potions, etc.
+     */
+    public static void registerPotionsAutomatically(
+        Map<Integer, Set<Integer>> groups,
+        ItemManager itemManager
+    ) {
+        Map<String, Set<Integer>> families = new HashMap<>();
+
+        for (int id = 0; id < MAX_ITEM_ID_SCAN; id++) {
+            ItemComposition item;
+            try {
+                item = itemManager.getItemComposition(id);
+            } catch (Exception ex) {
+                continue;
+            }
+            if (item == null) {
+                continue;
+            }
+
+            // Skip noted and placeholder variants – we only care about the actual drinkable item.
+            if (item.getNote() != -1 || item.getPlaceholderTemplateId() != -1) {
+                continue;
+            }
+
+            String name = item.getName();
+            if (name == null || name.isEmpty()) {
+                continue;
+            }
+
+            Matcher matcher = DOSE_PATTERN.matcher(name);
+            if (!matcher.matches()) {
+                continue;
+            }
+
+            // Only consider 1–4 dose variants.
+            int dose;
+            try {
+                dose = Integer.parseInt(matcher.group(2));
+            } catch (NumberFormatException ex) {
+                continue;
+            }
+            if (dose < 1 || dose > 4) {
+                continue;
+            }
+
+            // Ensure the item is actually drinkable.
+            String[] actions = item.getInventoryActions();
+            if (actions == null
+                || Arrays.stream(actions).noneMatch("Drink"::equals)) {
+                continue;
+            }
+
+            String family = matcher.group(1).trim().toLowerCase();
+            if (family.isEmpty()) {
+                continue;
+            }
+
+            families
+                .computeIfAbsent(family, k -> new HashSet<>())
+                .add(id);
+        }
+
+        // Register discovered families as equivalence groups.
+        for (Set<Integer> ids : families.values()) {
+            if (ids.size() <= 1) {
+                continue;
+            }
+            registerGroup(groups, ids.stream().mapToInt(Integer::intValue).toArray());
+        }
     }
 
     // ── Barrows equipment (base + 100/75/50/25/0 degradation states) ───────────
@@ -148,6 +255,25 @@ public final class RelatedItemsRegistry {
         registerGroup(groups, 29022, 29067); // Chestplate / Broken
         registerGroup(groups, 29025, 29070); // Tassets / Broken
         registerGroup(groups, 29028, 29073); // Helm / Broken
+    }
+
+    // ── Recipe rules (tertiary / upgrade unlocks) ─────────────────────────────
+    //
+    // These are relationships where owning all ingredient items should also unlock the crafted
+    // result, even if the player has never physically created or obtained the result yet.
+
+    private static void registerRecipes(Set<RecipeRule> recipes) {
+        // Amulet of torture + Araxyte fang → Amulet of rancour
+        // Item IDs from RuneLite's net.runelite.api.ItemID:
+        // AMULET_OF_TORTURE = 19553
+        // ARAXYTE_FANG = 29799
+        // AMULET_OF_RANCOUR = 29801
+        recipes.add(new RecipeRule(
+            IntStream.of(19553, 29799).boxed().collect(Collectors.toUnmodifiableSet()),
+            Collections.singleton(29801)
+        ));
+
+        // Future recipes can be added here following the same pattern.
     }
 
     // ── Registration helpers ───────────────────────────────────────────────────
