@@ -28,16 +28,45 @@ public final class RelatedItemsRegistry {
     }
 
     /**
-     * Creates a default registry with explicit recipe mappings and no equivalence expansion.
+     * Creates a default registry with curated equivalence groups for common item variants and
+     * explicit recipe mappings.
      */
     public static RelatedItemsRegistry createDefault() {
+        // Item IDs are taken from RuneLite numeric game item IDs.
+        Map<Integer, Set<Integer>> equivalenceGroups = Map.ofEntries(
+            // Standard herbs
+            herbPair(249, 199),   // GUAM_LEAF / GRIMY_GUAM_LEAF
+            herbPair(251, 201),   // MARRENTILL / GRIMY_MARRENTILL
+            herbPair(253, 203),   // TARROMIN / GRIMY_TARROMIN
+            herbPair(255, 205),   // HARRALANDER / GRIMY_HARRALANDER
+            herbPair(257, 207),   // RANARR_WEED / GRIMY_RANARR_WEED
+            herbPair(259, 209),   // IRIT_LEAF / GRIMY_IRIT_LEAF
+            herbPair(261, 211),   // AVANTOE / GRIMY_AVANTOE
+            herbPair(263, 213),   // KWUARM / GRIMY_KWUARM
+            herbPair(265, 215),   // CADANTINE / GRIMY_CADANTINE
+            herbPair(267, 217),   // DWARF_WEED / GRIMY_DWARF_WEED
+            herbPair(269, 219),   // TORSTOL / GRIMY_TORSTOL
+
+            // Other notable herbs
+            herbPair(2481, 2485), // LANTADYME / GRIMY_LANTADYME
+            herbPair(2998, 3049), // TOADFLAX / GRIMY_TOADFLAX
+            herbPair(1526, 1525)  // SNAKE_WEED / GRIMY_SNAKE_WEED
+        );
+
         Set<RecipeRule> recipes = new HashSet<>();
         registerRecipes(recipes);
 
         return new RelatedItemsRegistry(
-            Collections.emptyMap(),
+            equivalenceGroups,
             Collections.unmodifiableSet(recipes)
         );
+    }
+
+    private static Map.Entry<Integer, Set<Integer>> herbPair(int cleanId, int grimyId) {
+        Set<Integer> group = new HashSet<>();
+        group.add(cleanId);
+        group.add(grimyId);
+        return Map.entry(cleanId, Collections.unmodifiableSet(group));
     }
 
     private static void registerRecipes(Set<RecipeRule> recipes) {
