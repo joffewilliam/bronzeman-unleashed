@@ -17,6 +17,7 @@ import net.runelite.api.events.*;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.gameval.DBTableID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.events.ServerNpcLoot;
@@ -177,7 +178,8 @@ public class ItemUnlockService implements BUPluginLifecycle {
                     itemUnlockOverlay.enqueueShowUnlock(
                         unlockedItem.getId(),
                         unlockedItem.getAcquiredByAccountHash(),
-                        unlockedItem.getDroppedByNPCId()
+                        unlockedItem.getDroppedByNPCId(),
+                        unlockedItem.isRecipeUnlock()
                     );
                 });
 
@@ -193,7 +195,12 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
                             clientThread.invokeLater(() -> {
                                 ChatMessageBuilder builder = new ChatMessageBuilder();
-                                builder.append("Unlocked item ");
+                                final boolean isRecipe = unlockedItem.isRecipeUnlock();
+                                if (isRecipe) {
+                                    builder.append("Recipe unlock: ");
+                                } else {
+                                    builder.append("Unlocked item ");
+                                }
                                 if (itemIconTag != null) {
                                     builder.append(buPluginConfig.chatHighlightColor(), itemIconTag);
                                     builder.append(" ");
@@ -202,8 +209,45 @@ public class ItemUnlockService implements BUPluginLifecycle {
                                     buPluginConfig.chatItemNameColor(),
                                     unlockedItem.getName()
                                 );
-
-                                if (client.getAccountHash()
+                                if (isRecipe) {
+                                    Map<String, Integer> reqs = unlockedItem.getSkillRequirements();
+                                    if (reqs != null && !reqs.isEmpty()) {
+                                        builder.append(" (");
+                                        boolean first = true;
+                                        // Deterministic order: sort by skill name
+                                        List<String> sortedSkills = new ArrayList<>(reqs.keySet());
+                                        Collections.sort(sortedSkills);
+                                        for (String skillName : sortedSkills) {
+                                            Integer level = reqs.get(skillName);
+                                            if (level == null || level <= 0) {
+                                                continue;
+                                            }
+                                            if (!first) {
+                                                builder.append(", ");
+                                            }
+                                            first = false;
+                                            builder.append(skillName);
+                                            builder.append(" ");
+                                            builder.append(
+                                                buPluginConfig.chatItemNameColor(),
+                                                String.valueOf(level)
+                                            );
+                                        }
+                                        builder.append(")");
+                                    } else {
+                                        // Fallback to legacy crafting-only field if present
+                                        Integer craftLvl = unlockedItem.getRequiredCraftingLevel();
+                                        if (craftLvl != null) {
+                                            builder.append(" (Crafting ");
+                                            builder.append(
+                                                buPluginConfig.chatItemNameColor(),
+                                                String.valueOf(craftLvl)
+                                            );
+                                            builder.append(")");
+                                        }
+                                    }
+                                }
+                                if (!isRecipe && client.getAccountHash()
                                     != unlockedItem.getAcquiredByAccountHash()) {
                                     Member member = memberService.getMemberByAccountHash(
                                         unlockedItem.getAcquiredByAccountHash());
@@ -214,16 +258,18 @@ public class ItemUnlockService implements BUPluginLifecycle {
                                         member.getName()
                                     );
                                 }
-                                Integer droppedByNpcId = unlockedItem.getDroppedByNPCId();
-                                if (droppedByNpcId != null) {
-                                    NPCComposition npcComposition = client.getNpcDefinition(
-                                        droppedByNpcId);
-                                    builder.append(" (drop from ");
-                                    builder.append(
-                                        buPluginConfig.chatNPCNameColor(),
-                                        npcComposition.getName()
-                                    );
-                                    builder.append(")");
+                                if (!isRecipe) {
+                                    Integer droppedByNpcId = unlockedItem.getDroppedByNPCId();
+                                    if (droppedByNpcId != null) {
+                                        NPCComposition npcComposition = client.getNpcDefinition(
+                                            droppedByNpcId);
+                                        builder.append(" (drop from ");
+                                        builder.append(
+                                            buPluginConfig.chatNPCNameColor(),
+                                            npcComposition.getName()
+                                        );
+                                        builder.append(")");
+                                    }
                                 }
 
                                 buChatService.sendMessage(builder.build());
@@ -512,7 +558,10 @@ public class ItemUnlockService implements BUPluginLifecycle {
                     fItemName,
                     acquiredByAccountHash,
                     acquiredAt,
-                    droppedByNPCId
+                    droppedByNPCId,
+                    false,
+                    null,
+                    null
                 );
                 log.debug("Unlocked item ({}) '{}'", fItemId, fItemName);
 
@@ -574,7 +623,10 @@ public class ItemUnlockService implements BUPluginLifecycle {
                         equivalentName,
                         acquiredByAccountHash,
                         acquiredAt,
-                        droppedByNPCId
+                        droppedByNPCId,
+                        false,
+                        null,
+                        null
                     );
                     futures.add(unlockedItemsDataProvider.addUnlockedItem(equivalentUnlockedItem));
                 }
@@ -587,14 +639,28 @@ public class ItemUnlockService implements BUPluginLifecycle {
                         continue;
                     }
 
+                    // Respect in-game skill requirements from the SkillFeatures DB table:
+                    // if the player does not meet the required level for this feature, do not
+                    // unlock the recipe result yet.
+                    if (!meetsSkillFeatureRequirements(resultId)) {
+                        log.debug("Skipping recipe unlock for item {}: skill requirements not met", resultId);
+                        continue;
+                    }
+
                     ItemComposition resultComposition = client.getItemDefinition(resultId);
                     String resultName = resultComposition.getName();
+
+                    Map<String, Integer> skillReqs = buildSkillRequirementMap(resultId);
+
                     UnlockedItem resultUnlockedItem = new UnlockedItem(
                         resultId,
                         resultName,
                         acquiredByAccountHash,
                         acquiredAt,
-                        droppedByNPCId
+                        droppedByNPCId,
+                        true,
+                        null,
+                        skillReqs
                     );
                     futures.add(unlockedItemsDataProvider.addUnlockedItem(resultUnlockedItem));
                 }
@@ -604,6 +670,144 @@ public class ItemUnlockService implements BUPluginLifecycle {
                 }
                 return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
             });
+    }
+
+    /**
+     * Returns true if the local player meets all skill requirements for the given item
+     * according to the SkillFeatures DB table, or if no SkillFeatures row exists.
+     */
+    private boolean meetsSkillFeatureRequirements(int itemId) {
+        Map<Skill, Integer> requirements = getSkillRequirementsFromSkillFeatures(itemId);
+        if (requirements.isEmpty()) {
+            return true;
+        }
+
+        for (Map.Entry<Skill, Integer> entry : requirements.entrySet()) {
+            Skill skill = entry.getKey();
+            int requiredLevel = entry.getValue();
+            int realLevel = client.getRealSkillLevel(skill);
+            if (realLevel < requiredLevel) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Reads all SkillFeatures rows for the given item and returns a map of required skills
+     * and their levels. If no SkillFeatures row exists, or none contain a valid skill/level
+     * tuple, the returned map is empty.
+     */
+    private Map<Skill, Integer> getSkillRequirementsFromSkillFeatures(int itemId) {
+        Map<Skill, Integer> result = new HashMap<>();
+        List<Integer> rows;
+        try {
+            rows = client.getDBRowsByValue(
+                DBTableID.SkillFeatures.ID,
+                DBTableID.SkillFeatures.COL_ICON,
+                0,
+                itemId
+            );
+        } catch (Exception ex) {
+            log.warn("Failed to query SkillFeatures rows for item {} - assuming requirements met", itemId, ex);
+            return result;
+        }
+
+        if (rows == null || rows.isEmpty()) {
+            return result;
+        }
+
+        for (Integer rowId : rows) {
+            if (rowId == null) {
+                continue;
+            }
+            Object field;
+            try {
+                field = client.getDBTableField(
+                    rowId,
+                    DBTableID.SkillFeatures.COL_SKILL,
+                    0
+                );
+            } catch (Exception ex) {
+                log.warn("Failed to read SkillFeatures.COL_SKILL for row {} - skipping row", rowId, ex);
+                continue;
+            }
+
+            if (!(field instanceof Object[])) {
+                continue;
+            }
+
+            Object[] tuple = (Object[]) field;
+            if (tuple.length < 2) {
+                continue;
+            }
+
+            if (!(tuple[0] instanceof Integer) || !(tuple[1] instanceof Integer)) {
+                continue;
+            }
+
+            int statId = (Integer) tuple[0];
+            int requiredLevel = (Integer) tuple[1];
+
+            Skill skill = mapDbStatToSkill(statId);
+            if (skill == null || requiredLevel <= 0) {
+                continue;
+            }
+
+            // If multiple rows mention the same skill, keep the highest requirement.
+            result.merge(skill, requiredLevel, Math::max);
+        }
+
+        return result;
+    }
+
+    /**
+     * Builds a string-keyed skill requirement map for persistence/chat from SkillFeatures
+     * and, if available, from the legacy RelatedItemsRegistry crafting-level metadata.
+     */
+    private Map<String, Integer> buildSkillRequirementMap(int itemId) {
+        Map<Skill, Integer> fromDb = getSkillRequirementsFromSkillFeatures(itemId);
+        Map<String, Integer> byName = new HashMap<>();
+
+        for (Map.Entry<Skill, Integer> entry : fromDb.entrySet()) {
+            Skill skill = entry.getKey();
+            int level = entry.getValue();
+            if (level <= 0) {
+                continue;
+            }
+            byName.put(capitalize(skill.getName()), level);
+        }
+
+        // Preserve legacy crafting metadata if present and not already represented.
+        int craftLevel = relatedItemsRegistry.getRequiredCraftingLevel(itemId).orElse(-1);
+        if (craftLevel > 0 && !byName.containsKey("Crafting")) {
+            byName.put("Crafting", craftLevel);
+        }
+
+        return byName.isEmpty() ? null : Collections.unmodifiableMap(byName);
+    }
+
+    /**
+     * Maps a DB "stat" ID from gameval tables to a RuneLite Skill enum, based on the standard
+     * skill ordering used by the client.
+     */
+    private Skill mapDbStatToSkill(int statId) {
+        Skill[] skills = Skill.values();
+        if (statId < 0 || statId >= skills.length) {
+            return null;
+        }
+        return skills[statId];
+    }
+
+    private static String capitalize(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        if (value.length() == 1) {
+            return value.toUpperCase();
+        }
+        return Character.toUpperCase(value.charAt(0)) + value.substring(1).toLowerCase();
     }
 
     private int canonicalizeItemId(int initialItemId) {
@@ -677,7 +881,10 @@ public class ItemUnlockService implements BUPluginLifecycle {
                         equivalentName,
                         existing.getAcquiredByAccountHash(),
                         existing.getAcquiredAt(),
-                        existing.getDroppedByNPCId()
+                        existing.getDroppedByNPCId(),
+                        false,
+                        existing.getRequiredCraftingLevel(),
+                        existing.getSkillRequirements()
                     );
                     expandedMap.put(equivalentId, equivalentUnlockedItem);
                 }
@@ -691,17 +898,24 @@ public class ItemUnlockService implements BUPluginLifecycle {
                     continue;
                 }
 
+                if (!meetsSkillFeatureRequirements(resultId)) {
+                    log.debug("Skipping backfill recipe unlock for item {}: skill requirements not met", resultId);
+                    continue;
+                }
+
                 ItemComposition resultComposition = client.getItemDefinition(resultId);
                 String resultName = resultComposition.getName();
-                // Attribute recipe results to an arbitrary existing item for acquiredAt/account
-                // metadata; this is purely cosmetic for historical backfill.
+                Map<String, Integer> skillReqs = buildSkillRequirementMap(resultId);
                 UnlockedItem template = map.values().iterator().next();
                 UnlockedItem resultUnlockedItem = new UnlockedItem(
                     resultId,
                     resultName,
                     template.getAcquiredByAccountHash(),
                     template.getAcquiredAt(),
-                    template.getDroppedByNPCId()
+                    template.getDroppedByNPCId(),
+                    true,
+                    null,
+                    skillReqs
                 );
                 expandedMap.put(resultId, resultUnlockedItem);
             }

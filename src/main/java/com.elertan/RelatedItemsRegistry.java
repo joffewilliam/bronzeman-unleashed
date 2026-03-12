@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -44,14 +45,19 @@ public final class RelatedItemsRegistry {
 
     private final ConcurrentHashMap<Integer, Set<Integer>> equivalenceGroups;
     private final Set<RecipeRule> recipeRules;
+    private final Map<Integer, Integer> recipeResultCraftingLevels;
     private volatile boolean potionsRegistered = false;
 
     public RelatedItemsRegistry(
         Map<Integer, Set<Integer>> equivalenceGroups,
-        Set<RecipeRule> recipeRules
+        Set<RecipeRule> recipeRules,
+        Map<Integer, Integer> recipeResultCraftingLevels
     ) {
         this.equivalenceGroups = new ConcurrentHashMap<>(equivalenceGroups);
         this.recipeRules = recipeRules;
+        this.recipeResultCraftingLevels = recipeResultCraftingLevels == null
+            ? Collections.emptyMap()
+            : Collections.unmodifiableMap(new HashMap<>(recipeResultCraftingLevels));
     }
 
     /**
@@ -69,13 +75,18 @@ public final class RelatedItemsRegistry {
     public static RelatedItemsRegistry createDefault() {
         Map<Integer, Set<Integer>> groups = new HashMap<>();
         Set<RecipeRule> recipes = new HashSet<>();
+        Map<Integer, Integer> recipeCraftingLevels = new HashMap<>();
 
         registerHerbs(groups);
         registerBarrowsEquipment(groups);
         registerMoonsEquipment(groups);
-        registerRecipes(recipes);
+        registerRecipes(recipes, recipeCraftingLevels);
 
-        return new RelatedItemsRegistry(groups, Collections.unmodifiableSet(recipes));
+        return new RelatedItemsRegistry(
+            groups,
+            Collections.unmodifiableSet(recipes),
+            recipeCraftingLevels
+        );
     }
 
     /**
@@ -277,17 +288,28 @@ public final class RelatedItemsRegistry {
     //
     // These are relationships where owning all ingredient items should also unlock the crafted
     // result, even if the player has never physically created or obtained the result yet.
+    // Crafting levels are used for chat messages (e.g. "Recipe unlock: X (Crafting 93)").
 
-    private static void registerRecipes(Set<RecipeRule> recipes) {
-        // Amulet of torture + Maple longbow (u) → Amulet of rancour
+    private static void registerRecipes(Set<RecipeRule> recipes, Map<Integer, Integer> craftingLevels) {
+        // Amulet of torture + Araxyte fang (or test: maple longbow u) → Amulet of rancour (Crafting 93)
         recipes.add(new RecipeRule(
             IntStream.of(ItemID.ZENYTE_AMULET_ENCHANTED, ItemID.UNSTRUNG_MAPLE_LONGBOW)
                 .boxed()
                 .collect(Collectors.toUnmodifiableSet()),
             Collections.singleton(ItemID.AMULET_OF_RANCOUR)
         ));
+        craftingLevels.put(ItemID.AMULET_OF_RANCOUR, 93);
 
-        // Future recipes can be added here following the same pattern.
+        // Future recipes: add rule and crafting level here.
+    }
+
+    /**
+     * Returns the Crafting level required to make the given recipe result item, if known.
+     * Used for chat messages on recipe unlocks.
+     */
+    public OptionalInt getRequiredCraftingLevel(int recipeResultItemId) {
+        Integer level = recipeResultCraftingLevels.get(recipeResultItemId);
+        return level == null ? OptionalInt.empty() : OptionalInt.of(level);
     }
 
     // ── Registration helpers ───────────────────────────────────────────────────

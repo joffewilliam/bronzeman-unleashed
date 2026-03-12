@@ -47,6 +47,7 @@ public class ItemUnlockOverlay extends Overlay {
     private static final int SWAP_TIME_MS = 350;     // crossfade between items (image+name only)
 
     private static final String TITLE = "Item Unlocked";
+    private static final String RECIPE_UNLOCK_TITLE = "Recipe unlock";
     // Queue + items
     private final ConcurrentLinkedQueue<UnlockToast> queue = new ConcurrentLinkedQueue<>();
     @Inject
@@ -109,6 +110,18 @@ public class ItemUnlockOverlay extends Overlay {
     // ----- helpers -----
 
     public void enqueueShowUnlock(int itemId, long acquiredByAccountHash, Integer droppedByNPCId) {
+        enqueueShowUnlock(itemId, acquiredByAccountHash, droppedByNPCId, false);
+    }
+
+    /**
+     * @param recipeUnlock when true, overlay title is "Recipe unlock" instead of "Item Unlocked"
+     */
+    public void enqueueShowUnlock(
+        int itemId,
+        long acquiredByAccountHash,
+        Integer droppedByNPCId,
+        boolean recipeUnlock
+    ) {
         // We need members information for acquired by, waiting just in case
         membersDataProvider.await(null)
             .whenComplete((__, throwable) -> {
@@ -124,7 +137,7 @@ public class ItemUnlockOverlay extends Overlay {
                         NPCComposition npcComposition = client.getNpcDefinition(droppedByNPCId);
                         droppedBy = npcComposition.getName();
                     }
-                    queue.add(new UnlockToast(itemId, acquiredByAccountHash, droppedBy, img));
+                    queue.add(new UnlockToast(itemId, acquiredByAccountHash, droppedBy, img, recipeUnlock));
                     if (phase == Phase.IDLE && current == null) {
                         current = queue.poll();
                         startOpeningSession();
@@ -366,10 +379,10 @@ public class ItemUnlockOverlay extends Overlay {
         // Plugin icon
         g.drawImage(buResourceService.getIconBufferedImage(), frameX + 10, y + 10, 16, 16, null);
 
-        // Title
+        // Title (use "Recipe unlock" when this toast is for a recipe-result unlock)
         g.setFont(FontManager.getRunescapeBoldFont());
         FontMetrics fmBold = g.getFontMetrics();
-        final String title = TITLE;
+        final String title = current != null && current.recipeUnlock ? RECIPE_UNLOCK_TITLE : TITLE;
         int tx = frameX + (visibleWidth - fmBold.stringWidth(title)) / 2;
         int titleY = y + 24;
         if (titleY < y + visibleHeight - 5) {
@@ -479,13 +492,20 @@ public class ItemUnlockOverlay extends Overlay {
         final long acquiredByAccountHash;
         final String droppedBy;
         final AsyncBufferedImage image;
+        final boolean recipeUnlock;
 
-        UnlockToast(int itemId, long acquiredByAccountHash, String droppedBy,
-            AsyncBufferedImage image) {
+        UnlockToast(
+            int itemId,
+            long acquiredByAccountHash,
+            String droppedBy,
+            AsyncBufferedImage image,
+            boolean recipeUnlock
+        ) {
             this.itemId = itemId;
             this.acquiredByAccountHash = acquiredByAccountHash;
             this.droppedBy = droppedBy;
             this.image = image;
+            this.recipeUnlock = recipeUnlock;
         }
     }
 }
