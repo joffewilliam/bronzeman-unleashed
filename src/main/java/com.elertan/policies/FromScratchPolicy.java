@@ -13,30 +13,32 @@ import com.elertan.models.GameRules;
 import com.elertan.models.ISOOffsetDateTime;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import java.awt.AlphaComposite;
-import java.awt.Color;
-import java.awt.Composite;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
-import java.awt.Rectangle;
-import java.awt.Shape;
 import java.awt.event.KeyEvent;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
-import net.runelite.api.VarClientStr;
+import net.runelite.api.ScriptEvent;
+import net.runelite.api.ScriptID;
+import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ScriptPreFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.game.ItemManager;
@@ -50,7 +52,15 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 public class FromScratchPolicy extends PolicyBase {
 
     private static final int PROMPT_COOLDOWN_TICKS = 100;
-    private static final Color LOCKED_OVERLAY_COLOR = new Color(0, 0, 0, 180);
+    /** Transparency for item widgets (0 = opaque, 255 = fully transparent). Placeholder-style grey for locked. */
+    private static final int LOCKED_ITEM_TRANSPARENCY = 120;
+    private static final int UNLOCKED_ITEM_TRANSPARENCY = 0;
+    /** Chatbox group 162, child 44: layer button that contains the typed amount (e.g. "300*"). */
+    private static final int CHATBOX_AMOUNT_INPUT_WIDGET_ID = (162 << 16) | 44;
+    /** Same as POH: script that runs on each key typed in chatbox/amount layer (not in ScriptID). */
+    private static final int CHATBOX_INPUT_SCRIPT_ID = 112;
+    /** Enter in meslayer_onkey calls meslayer_enter (proc 681), which is the actual submit path. */
+    private static final int MESLAYER_ENTER_SCRIPT_ID = 681;
 
     private final FromScratchLockedItemsOverlay lockedItemsOverlay = new FromScratchLockedItemsOverlay();
 
@@ -68,13 +78,17 @@ public class FromScratchPolicy extends PolicyBase {
     private OverlayManager overlayManager;
     @Inject
     private KeyManager keyManager;
+    @Inject
+    private ClientThread clientThread;
 
     private volatile boolean bankOpen = false;
     private volatile int lastDepositPromptTick = -PROMPT_COOLDOWN_TICKS;
+    private volatile int lastBankQtyLogTick = -999;
     private volatile ISOOffsetDateTime announcedFromScratchStartedAt = null;
     private volatile PendingWithdrawX pendingWithdrawX = null;
-    private volatile boolean pendingWithdrawXPrefilled = false;
-    private KeyListener keyListener;
+    /** Mirrored from ScriptPreFired(112) when amount prompt is open, so we don't rely on widget/varc. */
+    private volatile String withdrawXMirroredAmount = null;
+    private KeyListener withdrawXKeyListener;
 
     @AllArgsConstructor
     private static class PendingWithdrawX {
@@ -95,38 +109,24 @@ public class FromScratchPolicy extends PolicyBase {
     @Override
     public void startUp() throws Exception {
         overlayManager.add(lockedItemsOverlay);
-        keyListener = new KeyListener() {
+        withdrawXKeyListener = new KeyListener() {
             @Override
             public void keyTyped(KeyEvent e) {
-                if (e.getKeyChar() == '\n' && shouldBlockPendingWithdrawXEnter()) {
-                    e.consume();
-                }
+                // Keep typing behavior native; enforcement happens at submit scripts.
             }
 
             @Override
             public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER
-                    && shouldBlockPendingWithdrawXEnter()) {
-                    e.consume();
-                    PendingWithdrawX pending = pendingWithdrawX;
-                    if (pending != null) {
-                        buChatService.sendErrorMessage(
-                            "From Scratch: you can only withdraw " + pending.withdrawableQuantity
-                                + " currently earned item(s) from this stack."
-                        );
-                    }
-                }
+                // Do not call client/widget APIs here — KeyListener runs on AWT thread.
+                // Enforcement is done on client thread in ScriptPreFired(681) and in updateWithdrawXPromptHintAndPrefill (cap displayed value).
             }
 
             @Override
             public void keyReleased(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER
-                    && shouldBlockPendingWithdrawXEnter()) {
-                    e.consume();
-                }
+                // Keep typing behavior native; enforcement happens at submit scripts.
             }
         };
-        keyManager.registerKeyListener(keyListener);
+        keyManager.registerKeyListener(withdrawXKeyListener);
     }
 
     @Override
@@ -135,10 +135,9 @@ public class FromScratchPolicy extends PolicyBase {
         lastDepositPromptTick = -PROMPT_COOLDOWN_TICKS;
         announcedFromScratchStartedAt = null;
         pendingWithdrawX = null;
-        pendingWithdrawXPrefilled = false;
-        if (keyListener != null) {
-            keyManager.unregisterKeyListener(keyListener);
-            keyListener = null;
+        if (withdrawXKeyListener != null) {
+            keyManager.unregisterKeyListener(withdrawXKeyListener);
+            withdrawXKeyListener = null;
         }
         itemUnlockService.setSuppressFromScratchInventoryAndWornUnlocking(false);
         overlayManager.remove(lockedItemsOverlay);
@@ -167,7 +166,7 @@ public class FromScratchPolicy extends PolicyBase {
 
         bankOpen = false;
         pendingWithdrawX = null;
-        pendingWithdrawXPrefilled = false;
+        withdrawXMirroredAmount = null;
     }
 
     public void onItemContainerChanged(ItemContainerChanged event) {
@@ -194,7 +193,6 @@ public class FromScratchPolicy extends PolicyBase {
         if (!isFromScratchActive()) {
             announcedFromScratchStartedAt = null;
             pendingWithdrawX = null;
-            pendingWithdrawXPrefilled = false;
             if (itemUnlockService.isSuppressFromScratchInventoryAndWornUnlocking()) {
                 itemUnlockService.setSuppressFromScratchInventoryAndWornUnlocking(false);
             }
@@ -205,8 +203,115 @@ public class FromScratchPolicy extends PolicyBase {
         maybeAnnounceFromScratchActivation();
         if (bankOpen) {
             captureBankBaselineIfNeeded();
+            applyBankDisplayQuantities();
         }
+        applyLockedItemTransparency();
         evaluateDepositCleanupState();
+    }
+
+    public void onScriptPostFired(ScriptPostFired event) {
+        if (!accountConfigurationService.isBronzemanEnabled()) {
+            return;
+        }
+        if (!bankOpen || !isFromScratchActive()) {
+            return;
+        }
+        int scriptId = event.getScriptId();
+        if (scriptId == ScriptID.BANKMAIN_FINISHBUILDING
+            || scriptId == ScriptID.BANKMAIN_SEARCH_REFRESH) {
+            applyBankDisplayQuantities();
+            applyLockedItemTransparency();
+        }
+    }
+
+    /**
+     * Mirror amount input from script 112 (POH-style) and handle submit/close.
+     * When amount prompt is submitted we cap; when we block Enter we run MESSAGE_LAYER_CLOSE instead.
+     */
+    public void onScriptPreFired(ScriptPreFired event) {
+        if (!accountConfigurationService.isBronzemanEnabled()) {
+            return;
+        }
+        if (!isFromScratchActive()) {
+            return;
+        }
+        int scriptId = event.getScriptId();
+        if (scriptId == CHATBOX_INPUT_SCRIPT_ID) {
+            mirrorWithdrawXAmountFromScript(event);
+            return;
+        }
+        if (scriptId == ScriptID.MESSAGE_LAYER_CLOSE) {
+            withdrawXMirroredAmount = null;
+        }
+        // Only 681 / 3750 / 4818 actually read the amount and submit; MESSAGE_LAYER_CLOSE just closes.
+        boolean isAmountSubmit =
+            scriptId == MESLAYER_ENTER_SCRIPT_ID
+                || scriptId == ScriptID.POTIONSTORE_DOSES
+                || scriptId == ScriptID.POTIONSTORE_WITHDRAW_DOSES;
+        if (!isAmountSubmit) {
+            return;
+        }
+        if (pendingWithdrawX != null) {
+            log.info("From Scratch: amount submit script pre-fired scriptId={}", scriptId);
+        }
+        enforceWithdrawXSubmitCap();
+        pendingWithdrawX = null;
+        withdrawXMirroredAmount = null;
+    }
+
+    /**
+     * Called right before submit scripts run (meslayer_enter/681 or potion store reuse scripts).
+     * Ensures the value the client will read is never above withdrawable (cap varc + widget).
+     * Do not require isEnterAmountPromptOpen() — by the time submit runs the prompt may already be closing.
+     */
+    private void enforceWithdrawXSubmitCap() {
+        PendingWithdrawX pending = pendingWithdrawX;
+        if (pending == null) {
+            return;
+        }
+        Integer requested = parsePositiveInt(getAmountForValidation());
+        if (requested == null) {
+            requested = parsePositiveInt(getAmountInputRaw());
+        }
+        if (requested == null || requested <= pending.withdrawableQuantity) {
+            return;
+        }
+        int capped = Math.max(1, pending.withdrawableQuantity);
+        log.info("From Scratch: Withdraw-X cap applied requested={} withdrawable={} capped={}",
+            requested, pending.withdrawableQuantity, capped);
+        setAmountInputRaw(String.valueOf(capped));
+        buChatService.sendErrorMessage(
+            "From Scratch: amount capped to " + capped + " unlocked item(s)."
+        );
+    }
+
+    /** POH-style: mirror typed chars from script 112 so we have a reliable amount for validation. */
+    private void mirrorWithdrawXAmountFromScript(ScriptPreFired event) {
+        if (pendingWithdrawX == null || !isEnterAmountPromptOpen()) {
+            return;
+        }
+        ScriptEvent scriptEvent = event.getScriptEvent();
+        int typedChar = scriptEvent.getTypedKeyChar();
+        if (typedChar == 0) {
+            return;
+        }
+        if (typedChar == 8) {
+            if (withdrawXMirroredAmount != null && !withdrawXMirroredAmount.isEmpty()) {
+                withdrawXMirroredAmount = withdrawXMirroredAmount.substring(
+                    0, withdrawXMirroredAmount.length() - 1);
+                if (withdrawXMirroredAmount.isEmpty()) {
+                    withdrawXMirroredAmount = null;
+                }
+            }
+            return;
+        }
+        if (typedChar == 10) {
+            return;
+        }
+        if (Character.isDigit((char) typedChar)) {
+            String base = withdrawXMirroredAmount == null ? "" : withdrawXMirroredAmount;
+            withdrawXMirroredAmount = base + (char) typedChar;
+        }
     }
 
     public void onMenuOptionClicked(MenuOptionClicked event) {
@@ -221,7 +326,6 @@ public class FromScratchPolicy extends PolicyBase {
             boolean allowed = enforcePendingWithdrawXAmount(event);
             if (allowed) {
                 pendingWithdrawX = null;
-                pendingWithdrawXPrefilled = false;
             }
             return;
         }
@@ -236,16 +340,18 @@ public class FromScratchPolicy extends PolicyBase {
                     currentQuantity,
                     baselineQuantity
                 );
+                withdrawXMirroredAmount = null;
                 pendingWithdrawX = new PendingWithdrawX(itemId, withdrawable);
-                pendingWithdrawXPrefilled = false;
             } else {
                 pendingWithdrawX = null;
-                pendingWithdrawXPrefilled = false;
+                withdrawXMirroredAmount = null;
             }
             return;
         }
-        pendingWithdrawX = null;
-        pendingWithdrawXPrefilled = false;
+        if (!isEnterAmountPromptOpen()) {
+            pendingWithdrawX = null;
+            withdrawXMirroredAmount = null;
+        }
 
         int widgetGroupId = resolveWidgetGroupId(event);
         if (widgetGroupId == InterfaceID.INVENTORY) {
@@ -280,26 +386,95 @@ public class FromScratchPolicy extends PolicyBase {
 
         int currentQuantity = getCurrentBankQuantity(itemId);
         Integer baselineQuantity = getBaselineQuantity(itemId);
+        int withdrawable = FromScratchModeUtils.getWithdrawableQuantity(currentQuantity, baselineQuantity);
 
         boolean unlocked = isItemUnlocked(itemId);
-        boolean canWithdraw = unlocked
-            && FromScratchModeUtils.canWithdraw(menuOption, currentQuantity, baselineQuantity);
-        if (canWithdraw) {
-            return true;
-        }
-
-        event.consume();
-        int withdrawable = FromScratchModeUtils.getWithdrawableQuantity(currentQuantity, baselineQuantity);
         if (!unlocked) {
+            event.consume();
             buChatService.sendErrorMessage(
                 "From Scratch: this bank item is locked until you unlock it through live gameplay."
             );
             return false;
         }
-        buChatService.sendErrorMessage(
-            "From Scratch: you can only withdraw " + withdrawable + " currently earned item(s) from this stack."
-        );
+        if (withdrawable <= 0) {
+            event.consume();
+            buChatService.sendErrorMessage(
+                "From Scratch: you have none of this item unlocked to withdraw."
+            );
+            return false;
+        }
+
+        if (isWithdrawXOption(menuOption)) {
+            return true;
+        }
+
+        boolean withinCap = FromScratchModeUtils.canWithdraw(menuOption, currentQuantity, baselineQuantity);
+        if (withinCap) {
+            return true;
+        }
+
+        // Requested amount exceeds withdrawable (e.g. Withdraw-All on 5k stack with 300 unlocked).
+        // Consume and replay as Withdraw-X with the capped amount so they get exactly withdrawable.
+        event.consume();
+        int param0 = event.getParam0();
+        int param1 = event.getParam1();
+        int widgetId = event.getWidget() != null ? event.getWidget().getId() : 0;
+        String target = event.getMenuTarget() != null ? event.getMenuTarget() : "";
+        int amountToWithdraw = withdrawable;
+        clientThread.invokeLater(() -> {
+            client.menuAction(
+                param0,
+                param1,
+                MenuAction.CC_OP,
+                widgetId,
+                itemId,
+                "Withdraw-X",
+                target
+            );
+            clientThread.invokeLater(() -> {
+                setAmountInputRaw(String.valueOf(amountToWithdraw));
+                client.runScript(ScriptID.POTIONSTORE_DOSES);
+            });
+        });
         return false;
+    }
+
+    /**
+     * After any key is typed into the amount prompt, if the value exceeds the cap we immediately
+     * overwrite MESLAYERINPUT and the widget so the client never sees more than the limit.
+     */
+    private void capWithdrawXInputIfOverLimit() {
+        PendingWithdrawX pending = pendingWithdrawX;
+        if (pending == null || !isEnterAmountPromptOpen()) {
+            return;
+        }
+        Integer requested = parsePositiveInt(getAmountInputRaw());
+        if (requested != null && requested > pending.withdrawableQuantity) {
+            int capped = Math.max(1, pending.withdrawableQuantity);
+            setAmountInputRaw(String.valueOf(capped));
+        }
+    }
+
+    /** True when the amount prompt is open and typed amount exceeds From Scratch limit (block Enter). */
+    private boolean shouldBlockWithdrawXSubmit() {
+        if (!accountConfigurationService.isBronzemanEnabled() || !isFromScratchActive()) {
+            return false;
+        }
+        PendingWithdrawX pending = pendingWithdrawX;
+        if (pending == null || !isEnterAmountPromptOpen()) {
+            return false;
+        }
+        String amountSource = getAmountForValidation();
+        Integer requested = parsePositiveInt(amountSource);
+        return requested != null && requested > pending.withdrawableQuantity;
+    }
+
+    /** Prefer mirrored amount (from script 112) when available, else widget/varc. */
+    private String getAmountForValidation() {
+        if (withdrawXMirroredAmount != null && !withdrawXMirroredAmount.isEmpty()) {
+            return withdrawXMirroredAmount;
+        }
+        return getAmountInputRaw();
     }
 
     private boolean shouldValidateWithdrawXSubmit(MenuOptionClicked event) {
@@ -308,7 +483,6 @@ public class FromScratchPolicy extends PolicyBase {
         }
         if (!isEnterAmountPromptOpen()) {
             pendingWithdrawX = null;
-            pendingWithdrawXPrefilled = false;
             return false;
         }
         return event.getMenuAction().ordinal() == MenuAction.WIDGET_CONTINUE.ordinal();
@@ -320,11 +494,7 @@ public class FromScratchPolicy extends PolicyBase {
             return true;
         }
 
-        String input = client.getVarcStrValue(VarClientStr.INPUT_TEXT);
-        if (input == null || input.trim().isEmpty()) {
-            input = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-        }
-        Integer requested = parsePositiveInt(input);
+        Integer requested = parsePositiveInt(getAmountInputRaw());
         if (requested == null) {
             return true;
         }
@@ -340,28 +510,11 @@ public class FromScratchPolicy extends PolicyBase {
         return false;
     }
 
-    private boolean shouldBlockPendingWithdrawXEnter() {
-        if (!accountConfigurationService.isBronzemanEnabled()) {
-            return false;
-        }
-        if (!isFromScratchActive()) {
-            return false;
-        }
-        PendingWithdrawX pending = pendingWithdrawX;
-        if (pending == null) {
-            return false;
-        }
-        if (!isEnterAmountPromptOpen()) {
-            return false;
-        }
-        String input = client.getVarcStrValue(VarClientStr.INPUT_TEXT);
-        if (input == null || input.trim().isEmpty()) {
-            input = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-        }
-        Integer requested = parsePositiveInt(input);
-        return requested != null && requested > pending.withdrawableQuantity;
-    }
-
+    /**
+     * Update the withdraw-X prompt text and enforce cap: while the prompt is open, keep the
+     * input vars capped to withdrawable so that when the client submits (Enter or click) it
+     * never sees more than the allowed amount.
+     */
     private void updateWithdrawXPromptHintAndPrefill() {
         PendingWithdrawX pending = pendingWithdrawX;
         if (pending == null) {
@@ -376,24 +529,30 @@ public class FromScratchPolicy extends PolicyBase {
             promptWidget.setText("Enter amount (max " + pending.withdrawableQuantity + "):");
         }
 
-        if (pendingWithdrawXPrefilled) {
+        Integer requested = parsePositiveInt(getAmountInputRaw());
+        if (requested != null && requested > pending.withdrawableQuantity) {
+            int capped = Math.max(1, pending.withdrawableQuantity);
+            setAmountInputRaw(String.valueOf(capped));
+        }
+    }
+
+    /**
+     * Runs every render frame (~60fps / ~16ms). Prevents the typed amount from ever exceeding the
+     * From Scratch cap so the client can never read an over-limit value when Enter is pressed.
+     */
+    private void enforceWithdrawXCapEveryFrame() {
+        PendingWithdrawX pending = pendingWithdrawX;
+        if (pending == null) {
             return;
         }
-
-        String input = client.getVarcStrValue(VarClientStr.INPUT_TEXT);
-        if (input == null || input.trim().isEmpty()) {
-            input = client.getVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT);
-        }
-        Integer typedAmount = parsePositiveInt(input);
-        if (typedAmount != null) {
-            pendingWithdrawXPrefilled = true;
+        if (!isEnterAmountPromptOpen()) {
             return;
         }
-
-        String suggested = String.valueOf(Math.max(0, pending.withdrawableQuantity));
-        client.setVarcStrValue(VarClientStr.INPUT_TEXT, suggested);
-        client.setVarcStrValue(VarClientStr.CHATBOX_TYPED_TEXT, suggested);
-        pendingWithdrawXPrefilled = true;
+        Integer requested = parsePositiveInt(getAmountInputRaw());
+        if (requested != null && requested > pending.withdrawableQuantity) {
+            int capped = Math.max(1, pending.withdrawableQuantity);
+            setAmountInputRaw(String.valueOf(capped));
+        }
     }
 
     private void evaluateDepositCleanupState() {
@@ -535,6 +694,60 @@ public class FromScratchPolicy extends PolicyBase {
         return itemManager.canonicalize(itemId);
     }
 
+    /**
+     * Set each bank item widget's displayed quantity to the withdrawable amount (current minus
+     * baseline). Uses Bankmain.ITEMS (12.12) dynamic children (D 12.12[...]) which are item slots
+     * in this interface layout.
+     */
+    private void applyBankDisplayQuantities() {
+        Widget itemsWidget = client.getWidget(InterfaceID.Bankmain.ITEMS);
+        if (itemsWidget == null) {
+            log.info("From Scratch: bank qty patch — widget 12.12 (ITEMS) is null");
+            return;
+        }
+        Widget[] children = itemsWidget.getDynamicChildren();
+        if (children == null) {
+            log.info("From Scratch: bank qty patch — getDynamicChildren() is null");
+            return;
+        }
+
+        int tick = client.getTickCount();
+        boolean shouldLog = (tick - lastBankQtyLogTick) >= 100;
+        if (shouldLog) {
+            lastBankQtyLogTick = tick;
+            log.info("From Scratch: bank qty patch entered widgetId={} children={}", itemsWidget.getId(), children.length);
+        }
+
+        // Track remaining withdrawable per item id so we split across multiple slots of same item
+        Map<Integer, Integer> withdrawableRemaining = new HashMap<>();
+        int loggedItems = 0;
+        final int maxLogItems = 3;
+        for (Widget child : children) {
+            if (child == null || child.isHidden()) {
+                continue;
+            }
+            int itemId = child.getItemId();
+            if (itemId <= 1) {
+                continue;
+            }
+            int slotQty = child.getItemQuantity();
+            int cur = getCurrentBankQuantity(itemId);
+            Integer base = getBaselineQuantity(itemId);
+            int totalWithdrawable = FromScratchModeUtils.getWithdrawableQuantity(cur, base);
+            int remaining = withdrawableRemaining.computeIfAbsent(itemId, id -> totalWithdrawable);
+            int show = Math.min(slotQty, remaining);
+
+            if (shouldLog && loggedItems < maxLogItems) {
+                log.info("From Scratch: bank qty itemId={} slotQty={} cur={} base={} withdraw={} set={} childId={}",
+                    itemId, slotQty, cur, base, totalWithdrawable, show, child.getId());
+                loggedItems++;
+            }
+
+            child.setItemQuantity(show);
+            withdrawableRemaining.put(itemId, remaining - show);
+        }
+    }
+
     private boolean isEnterAmountPromptOpen() {
         Widget promptWidget = getEnterAmountPromptWidget();
         if (promptWidget == null || promptWidget.isHidden()) {
@@ -568,6 +781,40 @@ public class FromScratchPolicy extends PolicyBase {
             }
         }
         return null;
+    }
+
+    /**
+     * Read the current amount from the prompt: first the layer widget (e.g. "300*"), then varcs.
+     * The widget text has * at the end for the cursor; we strip it and parse digits.
+     */
+    private String getAmountInputRaw() {
+        Widget amountWidget = client.getWidget(CHATBOX_AMOUNT_INPUT_WIDGET_ID);
+        if (amountWidget != null && !amountWidget.isHidden()) {
+            String text = amountWidget.getText();
+            if (text != null && !text.isEmpty()) {
+                return text;
+            }
+        }
+        String input = client.getVarcStrValue(VarClientID.MESLAYERINPUT);
+        if (input != null && !input.trim().isEmpty()) {
+            return input;
+        }
+        input = client.getVarcStrValue(VarClientID.CHATINPUT);
+        return input;
+    }
+
+    /**
+     * Write the amount into both the layer widget and the varcs so the client submits this value.
+     * Widget shows e.g. "123*"; we set that so the cursor stays at end.
+     */
+    private void setAmountInputRaw(String value) {
+        String withCursor = value + "*";
+        Widget amountWidget = client.getWidget(CHATBOX_AMOUNT_INPUT_WIDGET_ID);
+        if (amountWidget != null && !amountWidget.isHidden()) {
+            amountWidget.setText(withCursor);
+        }
+        client.setVarcStrValue(VarClientID.MESLAYERINPUT, value);
+        client.setVarcStrValue(VarClientID.CHATINPUT, value);
     }
 
     private Integer parsePositiveInt(String value) {
@@ -698,6 +945,70 @@ public class FromScratchPolicy extends PolicyBase {
         return menuOption.replaceAll("<[^>]*>", "").trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * Apply placeholder-style transparency for locked items (inv, equipment, bank).
+     * Called from GameTick and after bank script so opacity is set before the client draws,
+     * avoiding a frame of "normal" then "dulled" when opening bank or switching tabs.
+     */
+    private void applyLockedItemTransparency() {
+        if (!isFromScratchActive()) {
+            return;
+        }
+        applyTransparencyToContainer(client.getWidget(InterfaceID.Inventory.ITEMS), false);
+        applyTransparencyToContainer(client.getWidget(InterfaceID.Wornitems.EQUIPMENT), false);
+        if (bankOpen) {
+            applyTransparencyToContainer(client.getWidget(InterfaceID.Bankmain.ITEMS), true);
+        }
+    }
+
+    /**
+     * Lightweight: only inv + equipment (fixed ~42 slots). Used every overlay frame.
+     * Bank is done in GameTick/script only to avoid O(bankSlots * bankSize) per frame and FPS drop.
+     */
+    private void applyLockedItemTransparencyInvAndEquipmentOnly() {
+        if (!isFromScratchActive()) {
+            return;
+        }
+        applyTransparencyToContainer(client.getWidget(InterfaceID.Inventory.ITEMS), false);
+        applyTransparencyToContainer(client.getWidget(InterfaceID.Wornitems.EQUIPMENT), false);
+    }
+
+    /**
+     * Set widget transparency (0 = opaque, 255 = full transparent) per item so locked items
+     * look placeholder-style grey without a box.
+     */
+    private void applyTransparencyToContainer(Widget containerWidget, boolean bankContainer) {
+        if (containerWidget == null) {
+            return;
+        }
+        Widget[] children = containerWidget.getDynamicChildren();
+        if (children == null || children.length == 0) {
+            return;
+        }
+        for (Widget child : children) {
+            if (child == null || child.isHidden()) {
+                continue;
+            }
+            int childItemId = child.getItemId();
+            if (childItemId <= 1) {
+                continue;
+            }
+            boolean locked;
+            if (bankContainer) {
+                int currentQuantity = getCurrentBankQuantity(childItemId);
+                Integer baselineQuantity = getBaselineQuantity(childItemId);
+                locked = !isItemUnlocked(childItemId) || !FromScratchModeUtils.canWithdraw(
+                    "Withdraw-1",
+                    currentQuantity,
+                    baselineQuantity
+                );
+            } else {
+                locked = !isItemUnlocked(childItemId);
+            }
+            child.setOpacity(locked ? LOCKED_ITEM_TRANSPARENCY : UNLOCKED_ITEM_TRANSPARENCY);
+        }
+    }
+
     private class FromScratchLockedItemsOverlay extends Overlay {
 
         private FromScratchLockedItemsOverlay() {
@@ -710,65 +1021,9 @@ public class FromScratchPolicy extends PolicyBase {
             if (!isFromScratchActive()) {
                 return null;
             }
-
-            drawLockedOverlays(graphics, client.getWidget(InterfaceID.Inventory.ITEMS), false);
-            drawLockedOverlays(graphics, client.getWidget(InterfaceID.Wornitems.EQUIPMENT), false);
-
-            if (bankOpen) {
-                drawLockedOverlays(graphics, client.getWidget(InterfaceID.Bankmain.ITEMS), true);
-            }
+            applyLockedItemTransparencyInvAndEquipmentOnly();
+            enforceWithdrawXCapEveryFrame();
             return null;
-        }
-
-        private void drawLockedOverlays(Graphics2D graphics, Widget containerWidget, boolean bankContainer) {
-            if (containerWidget == null) {
-                return;
-            }
-            Widget[] children = containerWidget.getDynamicChildren();
-            if (children == null || children.length == 0) {
-                return;
-            }
-
-            Shape previousClip = graphics.getClip();
-            Rectangle containerBounds = containerWidget.getBounds();
-            graphics.setClip(containerBounds);
-
-            Composite previousComposite = graphics.getComposite();
-            graphics.setComposite(AlphaComposite.SrcOver);
-            graphics.setColor(LOCKED_OVERLAY_COLOR);
-
-            for (Widget child : children) {
-                if (child == null || child.isHidden()) {
-                    continue;
-                }
-
-                int childItemId = child.getItemId();
-                if (childItemId <= 1) {
-                    continue;
-                }
-
-                boolean locked;
-                if (bankContainer) {
-                    int currentQuantity = getCurrentBankQuantity(childItemId);
-                    Integer baselineQuantity = getBaselineQuantity(childItemId);
-                    locked = !isItemUnlocked(childItemId) || !FromScratchModeUtils.canWithdraw(
-                        "Withdraw-1",
-                        currentQuantity,
-                        baselineQuantity
-                    );
-                } else {
-                    locked = !isItemUnlocked(childItemId);
-                }
-                if (!locked) {
-                    continue;
-                }
-
-                Rectangle bounds = child.getBounds();
-                graphics.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-            }
-
-            graphics.setComposite(previousComposite);
-            graphics.setClip(previousClip);
         }
     }
 }

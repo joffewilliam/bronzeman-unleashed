@@ -60,8 +60,8 @@ public class GameRulesEditor extends JPanel {
 
         add(
             createSection(
-                "From Scratch",
-                "Start from zero unlocks and only unlock from live gameplay",
+                "Start fresh (From Scratch)",
+                "Start from zero unlocks and only unlock from live gameplay. You can also use the \"Start from scratch\" button on the Config screen.",
                 createFromScratchPanel(),
                 true
             ),

@@ -321,6 +321,7 @@ public final class BUPlugin extends Plugin {
     @Subscribe
     public void onScriptPostFired(ScriptPostFired event) {
         grandExchangePolicy.onScriptPostFired(event);
+        fromScratchPolicy.onScriptPostFired(event);
     }
 
     @Subscribe
@@ -369,6 +370,7 @@ public final class BUPlugin extends Plugin {
     public void onScriptPreFired(ScriptPreFired event) {
         itemUnlockService.onScriptPreFired(event);
         playerOwnedHousePolicy.onScriptPreFired(event);
+        fromScratchPolicy.onScriptPreFired(event);
     }
 
     @Subscribe

@@ -113,6 +113,7 @@ public class ConfigScreenViewModel {
         );
 
         if (transitionToEnabled) {
+            // Only when turning From Scratch ON do we clear the list (new run).
             int enableResult = JOptionPane.showConfirmDialog(
                 null,
                 "Enable From Scratch for the entire group?\n"
@@ -145,6 +146,8 @@ public class ConfigScreenViewModel {
             if (stopChoice == StopFromScratchChoice.StopAndMerge) {
                 preSaveFuture = mergeFromScratchUnlocksIntoMainList();
             }
+            // StopKeepSeparate: do NOT clear From Scratch list in Firebase; leave it preserved
+            // so the user can turn From Scratch back on later and still see their list.
         } else {
             int result = JOptionPane.showConfirmDialog(
                 null,
@@ -200,13 +203,15 @@ public class ConfigScreenViewModel {
     private StopFromScratchChoice promptStopFromScratchChoice() {
         Object[] options = new Object[] {
             "Cancel",
-            "Stop (keep separate)",
-            "Stop + Merge"
+            "Stop (keep list – do not delete)",
+            "Stop + Merge into main list"
         };
 
         int result = JOptionPane.showOptionDialog(
             null,
-            "Stop From Scratch for the group.\nChoose what to do with the From Scratch unlock list.",
+            "Stop From Scratch for the group.\n\n"
+                + "• \"Keep list\" = Your From Scratch unlock list stays in the group (nothing is deleted).\n"
+                + "• \"Merge\" = Copy those items into the main unlock list, then you can use them in normal mode.",
             "Stop From Scratch",
             JOptionPane.DEFAULT_OPTION,
             JOptionPane.WARNING_MESSAGE,
@@ -245,6 +250,65 @@ public class ConfigScreenViewModel {
             future = future.thenCompose(__ -> unlockedItemsDataProvider.addUnlockedItem(unlockedItem));
         }
         return future;
+    }
+
+    /**
+     * One-click start from scratch: enables From Scratch for the group, clears the unlock list,
+     * and saves. Use this when the Game Rules "From Scratch" option is not visible or you want a
+     * single action instead of toggling the checkbox and updating.
+     */
+    public void startFromScratchClick() {
+        GameRules currentGameRules = gameRulesService.getGameRules().get();
+        if (currentGameRules == null) {
+            errorMessageProperty.set("Game rules are not ready yet.");
+            return;
+        }
+        if (currentGameRules.isFromScratch()) {
+            errorMessageProperty.set("From Scratch is already enabled for this group.");
+            return;
+        }
+
+        int enableResult = JOptionPane.showConfirmDialog(
+            null,
+            "Enable From Scratch for the entire group?\n"
+                + "This starts a new run, clears the From Scratch unlock list, and applies to all members.",
+            "Confirm Start From Scratch",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE
+        );
+        if (enableResult != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        GameRules targetGameRules = currentGameRules.toBuilder()
+            .fromScratch(true)
+            .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
+            .build();
+
+        final GameRules gameRulesToPersist = targetGameRules;
+        isSubmittingProperty.set(true);
+
+        fromScratchUnlockedItemsDataProvider.clearAll()
+            .thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
+            .whenComplete((__, throwable) -> {
+                try {
+                    if (throwable != null) {
+                        log.error(
+                            "An error occurred while trying to start from scratch.",
+                            throwable
+                        );
+                        errorMessageProperty.set(
+                            "An error occurred while trying to save the game rules.");
+                        return;
+                    }
+                    errorMessageProperty.set(null);
+                    setGameRules(gameRulesToPersist);
+                    gameRulesEditorViewModelPropsProperty.set(propsSupplier.get());
+                    navigateToMainScreen.run();
+                } finally {
+                    isSubmittingProperty.set(false);
+                }
+            });
     }
 
     public void leaveButtonClick() {
