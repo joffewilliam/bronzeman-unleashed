@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
@@ -76,6 +77,10 @@ public class GrandExchangePolicy extends PolicyBase {
         if (scriptId == GE_SEARCH_BUILD_SCRIPT_ID) {
             onSearchBuild();
         }
+    }
+
+    public void onMenuOptionClicked(MenuOptionClicked event) {
+        // Reserved for future GE click restrictions.
     }
 
     private void onSearchBuild() {

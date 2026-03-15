@@ -1,17 +1,24 @@
 package com.elertan.panel.screens.main;
 
 import com.elertan.AccountConfigurationService;
+import com.elertan.FromScratchModeUtils;
 import com.elertan.GameRulesService;
 import com.elertan.MemberService;
+import com.elertan.data.FromScratchUnlockedItemsDataProvider;
 import com.elertan.data.GameRulesDataProvider;
+import com.elertan.data.UnlockedItemsDataProvider;
 import com.elertan.models.GameRules;
+import com.elertan.models.ISOOffsetDateTime;
 import com.elertan.models.Member;
 import com.elertan.models.MemberRole;
+import com.elertan.models.UnlockedItem;
 import com.elertan.panel.components.GameRulesEditorViewModel;
 import com.elertan.ui.Property;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import javax.swing.JOptionPane;
@@ -27,7 +34,10 @@ public class ConfigScreenViewModel {
 
     private final AccountConfigurationService accountConfigurationService;
     private final MemberService memberService;
+    private final GameRulesService gameRulesService;
     private final GameRulesDataProvider gameRulesDataProvider;
+    private final UnlockedItemsDataProvider unlockedItemsDataProvider;
+    private final FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
     private final Runnable navigateToMainScreen;
 
     private GameRules gameRules;
@@ -35,11 +45,17 @@ public class ConfigScreenViewModel {
 
     private ConfigScreenViewModel(Client client,
         AccountConfigurationService accountConfigurationService, GameRulesService gameRulesService,
-        GameRulesDataProvider gameRulesDataProvider, MemberService memberService,
+        GameRulesDataProvider gameRulesDataProvider,
+        UnlockedItemsDataProvider unlockedItemsDataProvider,
+        FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider,
+        MemberService memberService,
         Runnable navigateToMainScreen) {
         this.accountConfigurationService = accountConfigurationService;
         this.memberService = memberService;
+        this.gameRulesService = gameRulesService;
         this.gameRulesDataProvider = gameRulesDataProvider;
+        this.unlockedItemsDataProvider = unlockedItemsDataProvider;
+        this.fromScratchUnlockedItemsDataProvider = fromScratchUnlockedItemsDataProvider;
         this.navigateToMainScreen = navigateToMainScreen;
         propsSupplier = () -> {
             GameRules gameRules = gameRulesService.getGameRules().get();
@@ -78,20 +94,83 @@ public class ConfigScreenViewModel {
     }
 
     public void updateGameRulesClick() {
-        int result = JOptionPane.showConfirmDialog(
-            null,
-            "Are you sure you want to update the game rules?",
-            "Confirm update game rules",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.WARNING_MESSAGE
-        );
-        if (result != JOptionPane.OK_OPTION) {
+        GameRules currentGameRules = gameRulesService.getGameRules().get();
+        if (currentGameRules == null || gameRules == null) {
+            errorMessageProperty.set("Game rules are not ready yet.");
             return;
         }
 
+        GameRules targetGameRules = gameRules;
+        CompletableFuture<Void> preSaveFuture = CompletableFuture.completedFuture(null);
+
+        boolean transitionToEnabled = FromScratchModeUtils.isTransitionToEnabled(
+            currentGameRules,
+            targetGameRules
+        );
+        boolean transitionToDisabled = FromScratchModeUtils.isTransitionToDisabled(
+            currentGameRules,
+            targetGameRules
+        );
+
+        if (transitionToEnabled) {
+            int enableResult = JOptionPane.showConfirmDialog(
+                null,
+                "Enable From Scratch for the entire group?\n"
+                    + "This starts a new run, clears the From Scratch unlock list, and applies to all members.",
+                "Confirm Start From Scratch",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            );
+            if (enableResult != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            targetGameRules = targetGameRules.toBuilder()
+                .fromScratch(true)
+                .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
+                .build();
+
+            preSaveFuture = fromScratchUnlockedItemsDataProvider.clearAll();
+        } else if (transitionToDisabled) {
+            StopFromScratchChoice stopChoice = promptStopFromScratchChoice();
+            if (stopChoice == StopFromScratchChoice.Cancel) {
+                return;
+            }
+
+            targetGameRules = targetGameRules.toBuilder()
+                .fromScratch(false)
+                .fromScratchStartedAt(null)
+                .build();
+
+            if (stopChoice == StopFromScratchChoice.StopAndMerge) {
+                preSaveFuture = mergeFromScratchUnlocksIntoMainList();
+            }
+        } else {
+            int result = JOptionPane.showConfirmDialog(
+                null,
+                "Are you sure you want to update the game rules?",
+                "Confirm update game rules",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            );
+            if (result != JOptionPane.OK_OPTION) {
+                return;
+            }
+
+            if (targetGameRules.isFromScratch()) {
+                ISOOffsetDateTime startedAt = targetGameRules.getFromScratchStartedAt();
+                if (startedAt == null) {
+                    targetGameRules = targetGameRules.toBuilder()
+                        .fromScratchStartedAt(currentGameRules.getFromScratchStartedAt())
+                        .build();
+                }
+            }
+        }
+
+        final GameRules gameRulesToPersist = targetGameRules;
         isSubmittingProperty.set(true);
 
-        gameRulesDataProvider.updateGameRules(gameRules)
+        preSaveFuture.thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
             .whenComplete((__, throwable) -> {
                 try {
                     if (throwable != null) {
@@ -105,6 +184,7 @@ public class ConfigScreenViewModel {
                     }
 
                     errorMessageProperty.set(null);
+                    setGameRules(gameRulesToPersist);
                     navigateToMainScreen.run();
                 } finally {
                     isSubmittingProperty.set(false);
@@ -115,6 +195,56 @@ public class ConfigScreenViewModel {
     private void setGameRules(GameRules gameRules) {
         this.gameRules = gameRules;
         log.debug("config screen set game rules: {}", gameRules);
+    }
+
+    private StopFromScratchChoice promptStopFromScratchChoice() {
+        Object[] options = new Object[] {
+            "Cancel",
+            "Stop (keep separate)",
+            "Stop + Merge"
+        };
+
+        int result = JOptionPane.showOptionDialog(
+            null,
+            "Stop From Scratch for the group.\nChoose what to do with the From Scratch unlock list.",
+            "Stop From Scratch",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+            null,
+            options,
+            options[0]
+        );
+
+        if (result == 1) {
+            return StopFromScratchChoice.StopKeepSeparate;
+        }
+        if (result == 2) {
+            return StopFromScratchChoice.StopAndMerge;
+        }
+        return StopFromScratchChoice.Cancel;
+    }
+
+    private CompletableFuture<Void> mergeFromScratchUnlocksIntoMainList() {
+        Map<Integer, UnlockedItem> fromScratchMap = fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap();
+        Map<Integer, UnlockedItem> unlockedItemsMap = unlockedItemsDataProvider.getUnlockedItemsMap();
+
+        if (fromScratchMap == null || unlockedItemsMap == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Unlock lists are not ready for merging")
+            );
+        }
+
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (Map.Entry<Integer, UnlockedItem> entry : fromScratchMap.entrySet()) {
+            int itemId = entry.getKey();
+            if (unlockedItemsMap.containsKey(itemId)) {
+                continue;
+            }
+
+            UnlockedItem unlockedItem = entry.getValue();
+            future = future.thenCompose(__ -> unlockedItemsDataProvider.addUnlockedItem(unlockedItem));
+        }
+        return future;
     }
 
     public void leaveButtonClick() {
@@ -197,6 +327,10 @@ public class ConfigScreenViewModel {
         @Inject
         private GameRulesDataProvider gameRulesDataProvider;
         @Inject
+        private UnlockedItemsDataProvider unlockedItemsDataProvider;
+        @Inject
+        private FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
+        @Inject
         private MemberService memberService;
 
         @Override
@@ -206,9 +340,17 @@ public class ConfigScreenViewModel {
                 accountConfigurationService,
                 gameRulesService,
                 gameRulesDataProvider,
+                unlockedItemsDataProvider,
+                fromScratchUnlockedItemsDataProvider,
                 memberService,
                 navigateToMainScreen
             );
         }
+    }
+
+    private enum StopFromScratchChoice {
+        Cancel,
+        StopKeepSeparate,
+        StopAndMerge
     }
 }

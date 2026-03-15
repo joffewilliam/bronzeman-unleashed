@@ -11,12 +11,21 @@ import lombok.extern.slf4j.Slf4j;
 public class GameRulesStepViewViewModel {
 
     public final Property<GameRules> gameRules;
+    public final Property<Boolean> requiresGroupRuleAcknowledgement;
+    public final Property<Boolean> groupRuleAcknowledged;
     public final Property<Boolean> isSubmitting = new Property<>(false);
     public final Property<String> errorMessage = new Property<>(null);
     private final Listener listener;
 
-    private GameRulesStepViewViewModel(Property<GameRules> gameRules, Listener listener) {
+    private GameRulesStepViewViewModel(
+        Property<GameRules> gameRules,
+        Property<Boolean> requiresGroupRuleAcknowledgement,
+        Property<Boolean> groupRuleAcknowledged,
+        Listener listener
+    ) {
         this.gameRules = gameRules;
+        this.requiresGroupRuleAcknowledgement = requiresGroupRuleAcknowledgement;
+        this.groupRuleAcknowledged = groupRuleAcknowledged;
         this.listener = listener;
     }
 
@@ -25,6 +34,15 @@ public class GameRulesStepViewViewModel {
     }
 
     public void onFinishButtonClicked() {
+        Boolean requiresAcknowledgement = requiresGroupRuleAcknowledgement.get();
+        Boolean acknowledged = groupRuleAcknowledged.get();
+        if (requiresAcknowledgement != null
+            && requiresAcknowledgement
+            && (acknowledged == null || !acknowledged)) {
+            errorMessage.set("You must acknowledge that group rules apply to all group members.");
+            return;
+        }
+
         isSubmitting.set(true);
 
         listener.onFinish().whenComplete((__, throwable) -> {
@@ -45,7 +63,12 @@ public class GameRulesStepViewViewModel {
     @ImplementedBy(FactoryImpl.class)
     public interface Factory {
 
-        GameRulesStepViewViewModel create(Property<GameRules> gameRules, Listener listener);
+        GameRulesStepViewViewModel create(
+            Property<GameRules> gameRules,
+            Property<Boolean> requiresGroupRuleAcknowledgement,
+            Property<Boolean> groupRuleAcknowledged,
+            Listener listener
+        );
     }
 
     public interface Listener {
@@ -59,8 +82,18 @@ public class GameRulesStepViewViewModel {
     private static final class FactoryImpl implements Factory {
 
         @Override
-        public GameRulesStepViewViewModel create(Property<GameRules> gameRules, Listener listener) {
-            return new GameRulesStepViewViewModel(gameRules, listener);
+        public GameRulesStepViewViewModel create(
+            Property<GameRules> gameRules,
+            Property<Boolean> requiresGroupRuleAcknowledgement,
+            Property<Boolean> groupRuleAcknowledged,
+            Listener listener
+        ) {
+            return new GameRulesStepViewViewModel(
+                gameRules,
+                requiresGroupRuleAcknowledgement,
+                groupRuleAcknowledged,
+                listener
+            );
         }
     }
 }

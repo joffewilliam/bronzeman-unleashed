@@ -2,12 +2,15 @@ package com.elertan;
 
 import com.elertan.chat.ChatMessageEventBroadcaster;
 import com.elertan.data.GameRulesDataProvider;
+import com.elertan.data.FromScratchBankBaselineDataProvider;
+import com.elertan.data.FromScratchUnlockedItemsDataProvider;
 import com.elertan.data.GroundItemOwnedByDataProvider;
 import com.elertan.data.LastEventDataProvider;
 import com.elertan.data.MembersDataProvider;
 import com.elertan.data.UnlockedItemsDataProvider;
 import com.elertan.models.AccountConfiguration;
 import com.elertan.policies.FaladorPartyRoomPolicy;
+import com.elertan.policies.FromScratchPolicy;
 import com.elertan.policies.GrandExchangePolicy;
 import com.elertan.policies.GroundItemsPolicy;
 import com.elertan.policies.PlayerOwnedHousePolicy;
@@ -74,6 +77,10 @@ public final class BUPlugin extends Plugin {
     @Inject
     private UnlockedItemsDataProvider unlockedItemsDataProvider;
     @Inject
+    private FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
+    @Inject
+    private FromScratchBankBaselineDataProvider fromScratchBankBaselineDataProvider;
+    @Inject
     private LastEventDataProvider lastEventDataProvider;
     @Inject
     private GroundItemOwnedByDataProvider groundItemOwnedByDataProvider;
@@ -105,6 +112,8 @@ public final class BUPlugin extends Plugin {
     private ShopPolicy shopPolicy;
     @Inject
     private GroundItemsPolicy groundItemsPolicy;
+    @Inject
+    private FromScratchPolicy fromScratchPolicy;
     @Inject
     private ChatMessageEventBroadcaster chatMessageEventBroadcaster;
     @Inject
@@ -149,6 +158,8 @@ public final class BUPlugin extends Plugin {
         lifecycleDependencies.add(membersDataProvider);
         lifecycleDependencies.add(gameRulesDataProvider);
         lifecycleDependencies.add(unlockedItemsDataProvider);
+        lifecycleDependencies.add(fromScratchUnlockedItemsDataProvider);
+        lifecycleDependencies.add(fromScratchBankBaselineDataProvider);
         lifecycleDependencies.add(lastEventDataProvider);
         lifecycleDependencies.add(groundItemOwnedByDataProvider);
         // Services
@@ -169,6 +180,7 @@ public final class BUPlugin extends Plugin {
         lifecycleDependencies.add(tradePolicy);
         lifecycleDependencies.add(shopPolicy);
         lifecycleDependencies.add(groundItemsPolicy);
+        lifecycleDependencies.add(fromScratchPolicy);
         lifecycleDependencies.add(playerOwnedHousePolicy);
         lifecycleDependencies.add(playerVersusPlayerPolicy);
         lifecycleDependencies.add(faladorPartyRoomPolicy);
@@ -270,6 +282,7 @@ public final class BUPlugin extends Plugin {
     public void onGameTick(GameTick event) {
         petDropService.onGameTick(event);
         collectionLogService.onGameTick(event);
+        fromScratchPolicy.onGameTick(event);
     }
 
     @Subscribe
@@ -280,6 +293,7 @@ public final class BUPlugin extends Plugin {
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged event) {
         itemUnlockService.onItemContainerChanged(event);
+        fromScratchPolicy.onItemContainerChanged(event);
     }
 
     @Subscribe
@@ -311,8 +325,10 @@ public final class BUPlugin extends Plugin {
 
     @Subscribe
     public void onMenuOptionClicked(MenuOptionClicked event) {
+        grandExchangePolicy.onMenuOptionClicked(event);
         tradePolicy.onMenuOptionClicked(event);
         groundItemsPolicy.onMenuOptionClicked(event);
+        fromScratchPolicy.onMenuOptionClicked(event);
         playerOwnedHousePolicy.onMenuOptionClicked(event);
         playerVersusPlayerPolicy.onMenuOptionClicked(event);
         faladorPartyRoomPolicy.onMenuOptionClicked(event);
@@ -328,12 +344,14 @@ public final class BUPlugin extends Plugin {
     public void onWidgetLoaded(WidgetLoaded event) {
         grandExchangePolicy.onWidgetLoaded(event);
         shopPolicy.onWidgetLoaded(event);
+        fromScratchPolicy.onWidgetLoaded(event);
     }
 
     @Subscribe
     public void onWidgetClosed(WidgetClosed event) {
         grandExchangePolicy.onWidgetClosed(event);
         shopPolicy.onWidgetClosed(event);
+        fromScratchPolicy.onWidgetClosed(event);
     }
 
     @Subscribe

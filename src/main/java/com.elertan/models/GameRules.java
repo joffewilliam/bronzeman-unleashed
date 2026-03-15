@@ -8,7 +8,7 @@ import lombok.Builder;
 import lombok.Value;
 
 @Value
-@Builder
+@Builder(toBuilder = true)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class GameRules {
 
@@ -24,6 +24,8 @@ public class GameRules {
     boolean restrictPlayerVersusPlayerLoot;
     boolean restrictFaladorPartyRoomBalloons;
     boolean shareAchievementNotifications;
+    boolean fromScratch;
+    ISOOffsetDateTime fromScratchStartedAt;
     Integer valuableLootNotificationThreshold;
     String partyPassword;
 
@@ -41,6 +43,8 @@ public class GameRules {
             .restrictPlayerVersusPlayerLoot(false)
             .restrictFaladorPartyRoomBalloons(true)
             .shareAchievementNotifications(true)
+            .fromScratch(false)
+            .fromScratchStartedAt(null)
             .valuableLootNotificationThreshold(100_000)
             .partyPassword(null)
             .build();

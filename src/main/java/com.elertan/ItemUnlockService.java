@@ -3,6 +3,7 @@ package com.elertan;
 import com.elertan.chat.ChatMessageProvider;
 import com.elertan.chat.ChatMessageProvider.MessageKey;
 import com.elertan.data.AbstractDataProvider;
+import com.elertan.data.FromScratchUnlockedItemsDataProvider;
 import com.elertan.data.UnlockedItemsDataProvider;
 import com.elertan.models.*;
 import com.elertan.overlays.ItemUnlockOverlay;
@@ -121,7 +122,24 @@ public class ItemUnlockService implements BUPluginLifecycle {
         InventoryID.LOOTING_BAG, // Looting bag
         InventoryID.PMOON_REWARDINV // Moons of Peril reward
     );
-    private Subscription stateSubscription;
+    private static final Set<Integer> FROM_SCRATCH_INCLUDED_CONTAINER_IDS = ImmutableSet.of(
+        InventoryID.INV, // inventory
+        InventoryID.WORN, // Worn items
+
+        InventoryID.TRAIL_REWARDINV, // Barrows chest
+        InventoryID.MISC_RESOURCES_COLLECTED, // Miscellania reward
+        InventoryID.RAIDS_REWARDS, // Chambers of Xeric reward
+        InventoryID.TOB_CHESTS, // Theater of Blood reward
+        InventoryID.TOA_CHESTS, // Tombs of Amascut reward
+        InventoryID.TRAWLER_REWARDINV, // Fishing trawler reward
+        InventoryID.PMOON_REWARDINV // Moons of Peril reward
+    );
+    private static final Set<Integer> FROM_SCRATCH_SUPPRESSED_CONTAINER_IDS = ImmutableSet.of(
+        InventoryID.INV,
+        InventoryID.WORN
+    );
+    private Subscription unlockedItemsStateSubscription;
+    private Subscription fromScratchUnlockedItemsStateSubscription;
     private Subscription accountConfigSubscription;
     @Inject
     private Client client;
@@ -133,6 +151,8 @@ public class ItemUnlockService implements BUPluginLifecycle {
     private BUPluginConfig buPluginConfig;
     @Inject
     private UnlockedItemsDataProvider unlockedItemsDataProvider;
+    @Inject
+    private FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
     @Inject
     private BUChatService buChatService;
     @Inject
@@ -152,119 +172,62 @@ public class ItemUnlockService implements BUPluginLifecycle {
     @Inject
     private WorldTypeService worldTypeService;
     private UnlockedItemsDataProvider.UnlockedItemsMapListener unlockedItemsMapListener;
+    private FromScratchUnlockedItemsDataProvider.UnlockedItemsMapListener fromScratchUnlockedItemsMapListener;
+    private volatile boolean suppressFromScratchInventoryAndWornUnlocking = false;
     private volatile boolean hasNotifiedPlayerOfNonSupportedWorldType = false;
 
     @Override
     public void startUp() throws Exception {
         unlockedItemsMapListener = new UnlockedItemsDataProvider.UnlockedItemsMapListener() {
-
             @Override
             public void onUpdate(UnlockedItem unlockedItem) {
-                // Defer overlay to client thread to:
-                // 1. Ensure any collection log chat messages from the same tick are processed first
-                // 2. Safely access client.getAccountHash()
-                clientThread.invokeLater(() -> {
-                    boolean isLocalPlayer = client.getAccountHash() == unlockedItem.getAcquiredByAccountHash();
-
-                    if (isLocalPlayer && collectionLogService.tryConsumeOverlaySuppression(unlockedItem.getName())) {
-                        // Suppress overlay - native collection log UI already shows it
-                        return;
-                    }
-
-                    itemUnlockOverlay.enqueueShowUnlock(
-                        unlockedItem.getId(),
-                        unlockedItem.getAcquiredByAccountHash(),
-                        unlockedItem.getDroppedByNPCId()
-                    );
-                });
-
-                // Chat notification - keep existing code below unchanged
-                boolean hideChat = buPluginConfig.hideUnlockChatInMinigames() && minigameService.isInMinigameOrInstance();
-                if (buPluginConfig.showItemUnlocksInChat() && !hideChat) {
-                    buChatService.getItemIconTagIfEnabled(unlockedItem.getId())
-                        .whenComplete((itemIconTag, throwable) -> {
-                            if (throwable != null) {
-                                log.error("Failed to get item icon tag", throwable);
-                                return;
-                            }
-
-                            clientThread.invokeLater(() -> {
-                                ChatMessageBuilder builder = new ChatMessageBuilder();
-                                builder.append("Unlocked item ");
-                                if (itemIconTag != null) {
-                                    builder.append(buPluginConfig.chatHighlightColor(), itemIconTag);
-                                    builder.append(" ");
-                                }
-                                builder.append(
-                                    buPluginConfig.chatItemNameColor(),
-                                    unlockedItem.getName()
-                                );
-
-                                if (client.getAccountHash()
-                                    != unlockedItem.getAcquiredByAccountHash()) {
-                                    Member member = memberService.getMemberByAccountHash(
-                                        unlockedItem.getAcquiredByAccountHash());
-
-                                    builder.append(" by ");
-                                    builder.append(
-                                        buPluginConfig.chatPlayerNameColor(),
-                                        member.getName()
-                                    );
-                                }
-                                Integer droppedByNpcId = unlockedItem.getDroppedByNPCId();
-                                if (droppedByNpcId != null) {
-                                    NPCComposition npcComposition = client.getNpcDefinition(
-                                        droppedByNpcId);
-                                    builder.append(" (drop from ");
-                                    builder.append(
-                                        buPluginConfig.chatNPCNameColor(),
-                                        npcComposition.getName()
-                                    );
-                                    builder.append(")");
-                                }
-
-                                buChatService.sendMessage(builder.build());
-                            });
-                        }
-                    );
-                }
-
+                onUnlockedItemUpdated(unlockedItem, false);
             }
 
             @Override
             public void onDelete(UnlockedItem unlockedItem) {
-                // We can consider this re-locking items
-
-                buChatService.getItemIconTagIfEnabled(unlockedItem.getId())
-                    .whenComplete((itemIconTag, throwable) -> {
-                    if (throwable != null) {
-                        log.error("Failed to get item icon tag", throwable);
-                        return;
-                    }
-
-                    ChatMessageBuilder builder = new ChatMessageBuilder();
-                    if (itemIconTag != null) {
-                        builder.append(buPluginConfig.chatHighlightColor(), itemIconTag);
-                        builder.append(" ");
-                    }
-                    builder.append(buPluginConfig.chatItemNameColor(), unlockedItem.getName());
-                    builder.append(" has been removed from unlocked items.");
-                    buChatService.sendMessage(builder.build());
-                });
+                onUnlockedItemDeleted(unlockedItem, false);
             }
         };
+        fromScratchUnlockedItemsMapListener = new FromScratchUnlockedItemsDataProvider.UnlockedItemsMapListener() {
+            @Override
+            public void onUpdate(UnlockedItem unlockedItem) {
+                onUnlockedItemUpdated(unlockedItem, true);
+            }
+
+            @Override
+            public void onDelete(UnlockedItem unlockedItem) {
+                onUnlockedItemDeleted(unlockedItem, true);
+            }
+        };
+
         unlockedItemsDataProvider.addUnlockedItemsMapListener(unlockedItemsMapListener);
-        stateSubscription = unlockedItemsDataProvider.getState()
-            .subscribe(state -> unlockedItemDataProviderStateListener(state));
+        fromScratchUnlockedItemsDataProvider.addUnlockedItemsMapListener(fromScratchUnlockedItemsMapListener);
+        unlockedItemsStateSubscription = unlockedItemsDataProvider.getState()
+            .subscribe(state -> unlockedItemDataProviderStateListener(state, false));
+        fromScratchUnlockedItemsStateSubscription = fromScratchUnlockedItemsDataProvider.getState()
+            .subscribe(state -> unlockedItemDataProviderStateListener(state, true));
         accountConfigSubscription = accountConfigurationService.currentAccountConfiguration()
             .subscribe(this::currentAccountConfigurationChangeListener);
     }
 
     @Override
     public void shutDown() throws Exception {
-        stateSubscription.dispose();
-        accountConfigSubscription.dispose();
+        if (unlockedItemsStateSubscription != null) {
+            unlockedItemsStateSubscription.dispose();
+            unlockedItemsStateSubscription = null;
+        }
+        if (fromScratchUnlockedItemsStateSubscription != null) {
+            fromScratchUnlockedItemsStateSubscription.dispose();
+            fromScratchUnlockedItemsStateSubscription = null;
+        }
+        if (accountConfigSubscription != null) {
+            accountConfigSubscription.dispose();
+            accountConfigSubscription = null;
+        }
         unlockedItemsDataProvider.removeUnlockedItemsMapListener(unlockedItemsMapListener);
+        fromScratchUnlockedItemsDataProvider.removeUnlockedItemsMapListener(fromScratchUnlockedItemsMapListener);
+        suppressFromScratchInventoryAndWornUnlocking = false;
     }
 
     public void onGameStateChanged(GameStateChanged event) {
@@ -281,20 +244,28 @@ public class ItemUnlockService implements BUPluginLifecycle {
     }
 
     public void onItemContainerChanged(ItemContainerChanged event) {
-        if (unlockedItemsDataProviderNotReady()) {
+        if (activeUnlockedItemsDataProviderNotReady()) {
             return;
         }
 
         int containerId = event.getContainerId();
-        if (!INCLUDED_CONTAINER_IDS.contains(containerId)) {
+        Set<Integer> includedContainerIds = isFromScratchActive()
+            ? FROM_SCRATCH_INCLUDED_CONTAINER_IDS
+            : INCLUDED_CONTAINER_IDS;
+        if (!includedContainerIds.contains(containerId)) {
+            return;
+        }
+        if (isFromScratchActive()
+            && suppressFromScratchInventoryAndWornUnlocking
+            && FROM_SCRATCH_SUPPRESSED_CONTAINER_IDS.contains(containerId)) {
             return;
         }
         ItemContainer itemContainer = event.getItemContainer();
-        unlockItemsFromItemContainer(itemContainer);
+        unlockItemsFromItemContainer(itemContainer, containerId);
     }
 
     public void onServerNpcLoot(ServerNpcLoot event) {
-        if (unlockedItemsDataProviderNotReady()) {
+        if (activeUnlockedItemsDataProviderNotReady()) {
             return;
         }
 
@@ -307,7 +278,7 @@ public class ItemUnlockService implements BUPluginLifecycle {
     }
 
     public void onItemSpawned(ItemSpawned event) {
-        if (unlockedItemsDataProviderNotReady()) {
+        if (activeUnlockedItemsDataProviderNotReady()) {
             return;
         }
 
@@ -367,6 +338,9 @@ public class ItemUnlockService implements BUPluginLifecycle {
         if (preFired.getScriptId() != 4100) {
             return;
         }
+        if (isFromScratchActive()) {
+            return;
+        }
 
         // prevent reacting to scripts fired when opened from adventure log
         // e.g. other plugins might fire the collection log script when viewing other players' collection logs
@@ -380,7 +354,7 @@ public class ItemUnlockService implements BUPluginLifecycle {
     }
 
     public boolean hasUnlockedItem(int initialItemId) throws IllegalStateException {
-        if (unlockedItemsDataProviderNotReady()) {
+        if (activeUnlockedItemsDataProviderNotReady()) {
             throw new IllegalStateException("State is not READY");
         }
 
@@ -391,7 +365,7 @@ public class ItemUnlockService implements BUPluginLifecycle {
             return true;
         }
 
-        Map<Integer, UnlockedItem> map = unlockedItemsDataProvider.getUnlockedItemsMap();
+        Map<Integer, UnlockedItem> map = getActiveUnlockedItemsMap();
         if (map == null) {
             throw new IllegalStateException("Unlocked items map is null");
         }
@@ -410,12 +384,16 @@ public class ItemUnlockService implements BUPluginLifecycle {
             return CompletableFuture.completedFuture(null);
         }
 
-        return unlockedItemsDataProvider.removeUnlockedItemById(itemId)
+        return removeUnlockedItemByIdFromActiveProvider(itemId)
             .thenRun(() -> log.debug("Removed unlocked item with id {}", itemId));
     }
 
-    private boolean unlockedItemsDataProviderNotReady() {
-        return unlockedItemsDataProvider.getState().get() != UnlockedItemsDataProvider.State.Ready;
+    private boolean activeUnlockedItemsDataProviderNotReady() {
+        AbstractDataProvider.State unlockedState = unlockedItemsDataProvider.getState().get();
+        AbstractDataProvider.State fromScratchState = fromScratchUnlockedItemsDataProvider.getState().get();
+        return isFromScratchActive()
+            ? fromScratchState != AbstractDataProvider.State.Ready
+            : unlockedState != AbstractDataProvider.State.Ready;
     }
 
     private void currentAccountConfigurationChangeListener(
@@ -510,7 +488,7 @@ public class ItemUnlockService implements BUPluginLifecycle {
                     droppedByNPCId
                 );
                 log.debug("Unlocked item ({}) '{}'", fItemId, fItemName);
-                return unlockedItemsDataProvider.addUnlockedItem(unlockedItem);
+                return addUnlockedItem(unlockedItem);
             });
     }
 
@@ -538,17 +516,19 @@ public class ItemUnlockService implements BUPluginLifecycle {
         return MAP_ITEM_NAMES.getOrDefault(itemName, itemId);
     }
 
-    private void unlockedItemDataProviderStateListener(AbstractDataProvider.State state) {
+    private void unlockedItemDataProviderStateListener(
+        AbstractDataProvider.State state,
+        boolean fromScratchProvider
+    ) {
         if (state != AbstractDataProvider.State.Ready) {
             return;
         }
-//        if (hasUnlockedItemDataProviderReadyStateBeenSeen) {
-//            return;
-//        }
-//        hasUnlockedItemDataProviderReadyStateBeenSeen = true;
+        if (isFromScratchActive() != fromScratchProvider) {
+            return;
+        }
 
         clientThread.invokeLater(() -> {
-            Map<Integer, UnlockedItem> map = unlockedItemsDataProvider.getUnlockedItemsMap();
+            Map<Integer, UnlockedItem> map = getActiveUnlockedItemsMap();
             if (map == null) {
                 throw new IllegalStateException("Unlocked items map is null");
             }
@@ -561,18 +541,31 @@ public class ItemUnlockService implements BUPluginLifecycle {
             // This is the first time the unlocked items are ready
             log.debug(
                 "Unlocked items data provider ready for item unlock service first time, checking inventory");
-            INCLUDED_CONTAINER_IDS.stream()
-                .map(client::getItemContainer)
-                .forEach(this::unlockItemsFromItemContainer);
+            Set<Integer> includedContainerIds = isFromScratchActive()
+                ? FROM_SCRATCH_INCLUDED_CONTAINER_IDS
+                : INCLUDED_CONTAINER_IDS;
+            includedContainerIds.forEach(containerId -> {
+                if (isFromScratchActive()
+                    && suppressFromScratchInventoryAndWornUnlocking
+                    && FROM_SCRATCH_SUPPRESSED_CONTAINER_IDS.contains(containerId)) {
+                    return;
+                }
+                unlockItemsFromItemContainer(client.getItemContainer(containerId), containerId);
+            });
         });
     }
 
-    private void unlockItemsFromItemContainer(ItemContainer itemContainer) {
-        if (unlockedItemsDataProviderNotReady()) {
+    private void unlockItemsFromItemContainer(ItemContainer itemContainer, int containerId) {
+        if (activeUnlockedItemsDataProviderNotReady()) {
             return;
         }
 
         if (itemContainer == null) {
+            return;
+        }
+        if (isFromScratchActive()
+            && suppressFromScratchInventoryAndWornUnlocking
+            && FROM_SCRATCH_SUPPRESSED_CONTAINER_IDS.contains(containerId)) {
             return;
         }
 
@@ -583,5 +576,139 @@ public class ItemUnlockService implements BUPluginLifecycle {
             .filter(id -> !hasUnlockedItem(id))
             .map(this::unlockItem)
             .forEach(addErrorLogging("Failed to unlock item in item container changed"));
+    }
+
+    public void setSuppressFromScratchInventoryAndWornUnlocking(boolean suppress) {
+        suppressFromScratchInventoryAndWornUnlocking = suppress;
+    }
+
+    public boolean isSuppressFromScratchInventoryAndWornUnlocking() {
+        return suppressFromScratchInventoryAndWornUnlocking;
+    }
+
+    private boolean isFromScratchActive() {
+        GameRules gameRules = gameRulesService.getGameRules().get();
+        return gameRules != null && gameRules.isFromScratch();
+    }
+
+    private Map<Integer, UnlockedItem> getActiveUnlockedItemsMap() {
+        if (isFromScratchActive()) {
+            return fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap();
+        }
+        return unlockedItemsDataProvider.getUnlockedItemsMap();
+    }
+
+    private CompletableFuture<Void> addUnlockedItem(UnlockedItem unlockedItem) {
+        if (isFromScratchActive()) {
+            return fromScratchUnlockedItemsDataProvider.addUnlockedItem(unlockedItem);
+        }
+        return unlockedItemsDataProvider.addUnlockedItem(unlockedItem);
+    }
+
+    private CompletableFuture<Void> removeUnlockedItemByIdFromActiveProvider(int itemId) {
+        if (isFromScratchActive()) {
+            return fromScratchUnlockedItemsDataProvider.removeUnlockedItemById(itemId);
+        }
+        return unlockedItemsDataProvider.removeUnlockedItemById(itemId);
+    }
+
+    private void onUnlockedItemUpdated(UnlockedItem unlockedItem, boolean fromScratchSource) {
+        if (isFromScratchActive() != fromScratchSource) {
+            return;
+        }
+
+        // Defer overlay to client thread to:
+        // 1. Ensure any collection log chat messages from the same tick are processed first
+        // 2. Safely access client.getAccountHash()
+        clientThread.invokeLater(() -> {
+            boolean isLocalPlayer = client.getAccountHash() == unlockedItem.getAcquiredByAccountHash();
+
+            if (isLocalPlayer && collectionLogService.tryConsumeOverlaySuppression(unlockedItem.getName())) {
+                // Suppress overlay - native collection log UI already shows it
+                return;
+            }
+
+            itemUnlockOverlay.enqueueShowUnlock(
+                unlockedItem.getId(),
+                unlockedItem.getAcquiredByAccountHash(),
+                unlockedItem.getDroppedByNPCId()
+            );
+        });
+
+        // Chat notification
+        boolean hideChat = buPluginConfig.hideUnlockChatInMinigames() && minigameService.isInMinigameOrInstance();
+        if (!buPluginConfig.showItemUnlocksInChat() || hideChat) {
+            return;
+        }
+
+        buChatService.getItemIconTagIfEnabled(unlockedItem.getId())
+            .whenComplete((itemIconTag, throwable) -> {
+                if (throwable != null) {
+                    log.error("Failed to get item icon tag", throwable);
+                    return;
+                }
+
+                clientThread.invokeLater(() -> {
+                    ChatMessageBuilder builder = new ChatMessageBuilder();
+                    builder.append("Unlocked item ");
+                    if (itemIconTag != null) {
+                        builder.append(buPluginConfig.chatHighlightColor(), itemIconTag);
+                        builder.append(" ");
+                    }
+                    builder.append(
+                        buPluginConfig.chatItemNameColor(),
+                        unlockedItem.getName()
+                    );
+
+                    if (client.getAccountHash() != unlockedItem.getAcquiredByAccountHash()) {
+                        Member member = memberService.getMemberByAccountHash(
+                            unlockedItem.getAcquiredByAccountHash()
+                        );
+
+                        builder.append(" by ");
+                        builder.append(
+                            buPluginConfig.chatPlayerNameColor(),
+                            member.getName()
+                        );
+                    }
+                    Integer droppedByNpcId = unlockedItem.getDroppedByNPCId();
+                    if (droppedByNpcId != null) {
+                        NPCComposition npcComposition = client.getNpcDefinition(
+                            droppedByNpcId
+                        );
+                        builder.append(" (drop from ");
+                        builder.append(
+                            buPluginConfig.chatNPCNameColor(),
+                            npcComposition.getName()
+                        );
+                        builder.append(")");
+                    }
+
+                    buChatService.sendMessage(builder.build());
+                });
+            });
+    }
+
+    private void onUnlockedItemDeleted(UnlockedItem unlockedItem, boolean fromScratchSource) {
+        if (unlockedItem == null || isFromScratchActive() != fromScratchSource) {
+            return;
+        }
+
+        buChatService.getItemIconTagIfEnabled(unlockedItem.getId())
+            .whenComplete((itemIconTag, throwable) -> {
+                if (throwable != null) {
+                    log.error("Failed to get item icon tag", throwable);
+                    return;
+                }
+
+                ChatMessageBuilder builder = new ChatMessageBuilder();
+                if (itemIconTag != null) {
+                    builder.append(buPluginConfig.chatHighlightColor(), itemIconTag);
+                    builder.append(" ");
+                }
+                builder.append(buPluginConfig.chatItemNameColor(), unlockedItem.getName());
+                builder.append(" has been removed from unlocked items.");
+                buChatService.sendMessage(builder.build());
+            });
     }
 }

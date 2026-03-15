@@ -58,6 +58,17 @@ public class GameRulesEditor extends JPanel {
         add(Box.createVerticalStrut(20), gbc);
         gbc.gridy++;
 
+        add(
+            createSection(
+                "From Scratch",
+                "Start from zero unlocks and only unlock from live gameplay",
+                createFromScratchPanel(),
+                true
+            ),
+            gbc
+        );
+        gbc.gridy++;
+
         add(createSection("General", "General", createGeneralPanel(), true), gbc);
         gbc.gridy++;
 
@@ -213,6 +224,46 @@ public class GameRulesEditor extends JPanel {
             ), gbc
         );
         gbc.gridy++;
+
+        return panel;
+    }
+
+    private JPanel createFromScratchPanel() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setOpaque(false);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 0, 5, 0);
+
+        JCheckBox fromScratchCheckBox = new JCheckBox();
+        Bindings.bindSelected(
+            fromScratchCheckBox,
+            viewModel.fromScratchProperty
+        );
+        Bindings.bindEnabled(
+            fromScratchCheckBox,
+            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
+        );
+        panel.add(
+            createCheckboxInput(
+                "Enable From Scratch",
+                "Start with zero unlocks. Existing bank/inventory/equipment items remain locked until earned in live gameplay.",
+                fromScratchCheckBox
+            ), gbc
+        );
+        gbc.gridy++;
+
+        JLabel descriptionLabel = new JLabel(
+            "<html><div style=\"color:gray;\">"
+                + "Only items earned through live gameplay are unlocked. This is a group-wide setting."
+                + "</div></html>"
+        );
+        panel.add(descriptionLabel, gbc);
 
         return panel;
     }

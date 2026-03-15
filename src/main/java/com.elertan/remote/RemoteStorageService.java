@@ -4,6 +4,7 @@ import com.elertan.AccountConfigurationService;
 import com.elertan.BUPluginLifecycle;
 import com.elertan.event.BUEvent;
 import com.elertan.models.AccountConfiguration;
+import com.elertan.models.FromScratchBankBaselineEntry;
 import com.elertan.models.GameRules;
 import com.elertan.models.GroundItemOwnedByData;
 import com.elertan.models.GroundItemOwnedByKey;
@@ -12,6 +13,8 @@ import com.elertan.models.UnlockedItem;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabase;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabaseURL;
 import com.elertan.remote.firebase.FirebaseSSEStream;
+import com.elertan.remote.firebase.storageAdapters.FromScratchBankBaselineFirebaseKeyValueStorageAdapter;
+import com.elertan.remote.firebase.storageAdapters.FromScratchUnlockedItemsFirebaseKeyValueStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.GameRulesFirebaseObjectStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.GroundItemOwnedByKeyListStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.LastEventFirebaseObjectListStorageAdapter;
@@ -54,6 +57,10 @@ public class RemoteStorageService implements BUPluginLifecycle {
     private KeyValueStoragePort<Long, Member> membersStoragePort;
     @Getter
     private KeyValueStoragePort<Integer, UnlockedItem> unlockedItemsStoragePort;
+    @Getter
+    private KeyValueStoragePort<Integer, UnlockedItem> fromScratchUnlockedItemsStoragePort;
+    @Getter
+    private KeyValueStoragePort<String, FromScratchBankBaselineEntry> fromScratchBankBaselineStoragePort;
     @Getter
     private ObjectStoragePort<GameRules> gameRulesStoragePort;
     @Getter
@@ -167,6 +174,14 @@ public class RemoteStorageService implements BUPluginLifecycle {
             unlockedItemsStoragePort.close();
             unlockedItemsStoragePort = null;
         }
+        if (fromScratchUnlockedItemsStoragePort != null) {
+            fromScratchUnlockedItemsStoragePort.close();
+            fromScratchUnlockedItemsStoragePort = null;
+        }
+        if (fromScratchBankBaselineStoragePort != null) {
+            fromScratchBankBaselineStoragePort.close();
+            fromScratchBankBaselineStoragePort = null;
+        }
         if (gameRulesStoragePort != null) {
             gameRulesStoragePort.close();
             gameRulesStoragePort = null;
@@ -198,6 +213,14 @@ public class RemoteStorageService implements BUPluginLifecycle {
             gson
         );
         unlockedItemsStoragePort = new UnlockedItemsFirebaseKeyValueStorageAdapter(
+            firebaseRealtimeDatabase,
+            gson
+        );
+        fromScratchUnlockedItemsStoragePort = new FromScratchUnlockedItemsFirebaseKeyValueStorageAdapter(
+            firebaseRealtimeDatabase,
+            gson
+        );
+        fromScratchBankBaselineStoragePort = new FromScratchBankBaselineFirebaseKeyValueStorageAdapter(
             firebaseRealtimeDatabase,
             gson
         );

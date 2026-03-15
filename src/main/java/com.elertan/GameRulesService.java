@@ -183,6 +183,12 @@ public class GameRulesService implements BUPluginLifecycle {
                 booleanFormatter.apply(newGameRules.isShareAchievementNotifications())
             );
         }
+        if (oldGameRules.isFromScratch() != newGameRules.isFromScratch()) {
+            differences.put(
+                "From Scratch",
+                booleanFormatter.apply(newGameRules.isFromScratch())
+            );
+        }
         if (!Objects.equals(oldGameRules.getPartyPassword(), newGameRules.getPartyPassword())) {
             differences.put("Party password", "*hidden see config*");
         }

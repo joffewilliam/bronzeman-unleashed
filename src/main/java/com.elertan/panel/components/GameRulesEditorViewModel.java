@@ -24,6 +24,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
     public final Property<Boolean> restrictPlayerVersusPlayerLootProperty;
     public final Property<Boolean> restrictFaladorPartyRoomBalloonsProperty;
     public final Property<Boolean> shareAchievementNotificationsProperty;
+    public final Property<Boolean> fromScratchProperty;
     public final Property<Integer> valuableLootNotificationThresholdProperty;
     public final Property<String> partyPasswordProperty;
     public final Property<Boolean> isViewOnlyModeProperty;
@@ -53,6 +54,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         restrictPlayerVersusPlayerLootProperty = new Property<>(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty = new Property<>(gameRules.isRestrictFaladorPartyRoomBalloons());
         shareAchievementNotificationsProperty = new Property<>(gameRules.isShareAchievementNotifications());
+        fromScratchProperty = new Property<>(gameRules.isFromScratch());
         valuableLootNotificationThresholdProperty = new Property<>(gameRules.getValuableLootNotificationThreshold());
         partyPasswordProperty = new Property<>(gameRules.getPartyPassword());
 
@@ -86,6 +88,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         addListener(restrictPlayerVersusPlayerLootProperty, updateListener);
         addListener(restrictFaladorPartyRoomBalloonsProperty, updateListener);
         addListener(shareAchievementNotificationsProperty, updateListener);
+        addListener(fromScratchProperty, updateListener);
         addListener(valuableLootNotificationThresholdProperty, updateListener);
         addListener(partyPasswordProperty, updateListener);
 
@@ -113,6 +116,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         restrictPlayerVersusPlayerLootProperty.set(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty.set(gameRules.isRestrictFaladorPartyRoomBalloons());
         shareAchievementNotificationsProperty.set(gameRules.isShareAchievementNotifications());
+        fromScratchProperty.set(gameRules.isFromScratch());
         partyPasswordProperty.set(gameRules.getPartyPassword());
         valuableLootNotificationThresholdProperty.set(gameRules.getValuableLootNotificationThreshold());
 
@@ -146,6 +150,10 @@ public class GameRulesEditorViewModel extends BaseViewModel {
             .restrictPlayerVersusPlayerLoot(restrictPlayerVersusPlayerLootProperty.get())
             .restrictFaladorPartyRoomBalloons(restrictFaladorPartyRoomBalloonsProperty.get())
             .shareAchievementNotifications(shareAchievementNotificationsProperty.get())
+            .fromScratch(fromScratchProperty.get())
+            .fromScratchStartedAt(props.getGameRules() == null
+                ? null
+                : props.getGameRules().getFromScratchStartedAt())
             .valuableLootNotificationThreshold(valuableLootNotificationThresholdProperty.get())
             .partyPassword(partyPasswordProperty.get())
             .build();

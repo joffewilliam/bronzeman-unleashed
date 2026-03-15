@@ -15,6 +15,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,8 @@ public class GameRulesStepView extends JPanel implements AutoCloseable {
     private final AutoCloseable finishButtonEnabledBinding;
     private final AutoCloseable errorMessageContainerVisibleBinding;
     private final AutoCloseable errorMessageLabelTextBinding;
+    private final AutoCloseable acknowledgementPanelVisibleBinding;
+    private final AutoCloseable acknowledgementCheckboxBinding;
 
     private GameRulesStepView(GameRulesStepViewViewModel viewModel,
         GameRulesEditor gameRulesEditor) {
@@ -47,6 +50,35 @@ public class GameRulesStepView extends JPanel implements AutoCloseable {
             gameRulesEditor.getPreferredSize().height
         ));
         add(gameRulesEditor);
+
+        JPanel acknowledgementPanel = new JPanel();
+        acknowledgementPanel.setLayout(new BoxLayout(acknowledgementPanel, BoxLayout.Y_AXIS));
+        acknowledgementPanel.setOpaque(false);
+        acknowledgementPanel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        acknowledgementPanelVisibleBinding = Bindings.bindVisible(
+            acknowledgementPanel,
+            viewModel.requiresGroupRuleAcknowledgement
+        );
+
+        JLabel acknowledgementLabel = new JLabel(
+            "<html><div style=\"text-align:left;color:rgb(220,180,80);\">"
+                + "You are joining an existing group. These rules are shared and apply to all members."
+                + "</div></html>"
+        );
+        acknowledgementPanel.add(acknowledgementLabel);
+        acknowledgementPanel.add(Box.createVerticalStrut(6));
+
+        JCheckBox acknowledgementCheckBox = new JCheckBox(
+            "I understand these group rules apply to all members, including me."
+        );
+        acknowledgementCheckBox.setOpaque(false);
+        acknowledgementCheckboxBinding = Bindings.bindSelected(
+            acknowledgementCheckBox,
+            viewModel.groupRuleAcknowledged
+        );
+        acknowledgementPanel.add(acknowledgementCheckBox);
+
+        add(acknowledgementPanel);
 
         JPanel errorMessageContainer = new JPanel();
         errorMessageContainer.setLayout(new BoxLayout(errorMessageContainer, BoxLayout.Y_AXIS));
@@ -108,6 +140,8 @@ public class GameRulesStepView extends JPanel implements AutoCloseable {
         errorMessageContainerVisibleBinding.close();
         finishButtonEnabledBinding.close();
         backButtonEnabledBinding.close();
+        acknowledgementCheckboxBinding.close();
+        acknowledgementPanelVisibleBinding.close();
     }
 
     @ImplementedBy(FactoryImpl.class)

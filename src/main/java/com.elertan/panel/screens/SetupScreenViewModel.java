@@ -4,6 +4,7 @@ import com.elertan.AccountConfigurationService;
 import com.elertan.BUPanelService;
 import com.elertan.models.AccountConfiguration;
 import com.elertan.models.GameRules;
+import com.elertan.models.ISOOffsetDateTime;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabase;
 import com.elertan.remote.firebase.FirebaseRealtimeDatabaseURL;
 import com.elertan.remote.firebase.storageAdapters.GameRulesFirebaseObjectStorageAdapter;
@@ -12,6 +13,7 @@ import com.google.gson.Gson;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
 import javax.swing.JOptionPane;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +26,8 @@ public final class SetupScreenViewModel implements AutoCloseable {
     public final Property<Step> step = new Property<>(Step.REMOTE);
     public final Property<Boolean> gameRulesAreViewOnly = new Property<>(null);
     public final Property<GameRules> gameRules = new Property<>(null);
+    public final Property<Boolean> requiresGroupRuleAcknowledgement = new Property<>(false);
+    public final Property<Boolean> groupRuleAcknowledged = new Property<>(false);
     private final Client client;
     private final BUPanelService buPanelService;
     private final AccountConfigurationService accountConfigurationService;
@@ -92,8 +96,12 @@ public final class SetupScreenViewModel implements AutoCloseable {
 
             if (gameRules == null) {
                 gameRulesAreViewOnly.set(false);
+                requiresGroupRuleAcknowledgement.set(false);
+                groupRuleAcknowledged.set(true);
             } else {
                 gameRulesAreViewOnly.set(true);
+                requiresGroupRuleAcknowledgement.set(true);
+                groupRuleAcknowledged.set(false);
             }
 
             this.gameRules.set(gameRules);
@@ -108,6 +116,8 @@ public final class SetupScreenViewModel implements AutoCloseable {
     public void onGameRulesStepBack() {
         step.set(Step.REMOTE);
         gameRules.set(null);
+        requiresGroupRuleAcknowledgement.set(false);
+        groupRuleAcknowledged.set(false);
     }
 
     public CompletableFuture<Void> onGameRulesStepFinish() {
@@ -130,6 +140,8 @@ public final class SetupScreenViewModel implements AutoCloseable {
             step.set(Step.REMOTE);
             gameRulesAreViewOnly.set(null);
             gameRules.set(null);
+            requiresGroupRuleAcknowledgement.set(false);
+            groupRuleAcknowledged.set(false);
 
             long accountHash = client.getAccountHash();
             AccountConfiguration accountConfiguration = new AccountConfiguration(
@@ -155,6 +167,14 @@ public final class SetupScreenViewModel implements AutoCloseable {
             future.complete(null);
         };
 
+        Boolean requiresAck = requiresGroupRuleAcknowledgement.get();
+        Boolean acknowledged = groupRuleAcknowledged.get();
+        if (requiresAck != null && requiresAck && (acknowledged == null || !acknowledged)) {
+            Exception ex = new IllegalStateException("You must acknowledge that group rules are shared.");
+            future.completeExceptionally(ex);
+            return future;
+        }
+
         if (gameRulesAreViewOnlyValue) {
             finalize.run();
             return future;
@@ -166,8 +186,16 @@ public final class SetupScreenViewModel implements AutoCloseable {
             future.completeExceptionally(ex);
             return future;
         }
+        GameRules normalizedGameRulesValue = gameRulesValue;
+        if (normalizedGameRulesValue.isFromScratch()
+            && normalizedGameRulesValue.getFromScratchStartedAt() == null) {
+            normalizedGameRulesValue = normalizedGameRulesValue.toBuilder()
+                .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
+                .build();
+            this.gameRules.set(normalizedGameRulesValue);
+        }
 
-        gameRulesStoragePort.update(gameRulesValue).whenComplete((__, throwable) -> {
+        gameRulesStoragePort.update(normalizedGameRulesValue).whenComplete((__, throwable) -> {
             if (throwable != null) {
                 future.completeExceptionally(throwable);
                 return;
