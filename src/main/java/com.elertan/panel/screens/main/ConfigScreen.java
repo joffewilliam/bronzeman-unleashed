@@ -31,10 +31,12 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
     private final AutoCloseable leaveButtonEnabledBinding;
     private final AutoCloseable errorMessageLabelVisibleBinding;
     private final AutoCloseable errorMessageLabelTextBinding;
+    private final GameRulesEditor gameRulesEditor;
 
     private ConfigScreen(ConfigScreenViewModel viewModel,
         GameRulesEditorViewModel gameRulesEditorViewModel,
         GameRulesEditor.Factory gameRulesEditorFactory) {
+        this.gameRulesEditor = gameRulesEditorFactory.create(gameRulesEditorViewModel);
         setLayout(new GridBagLayout());
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
@@ -70,7 +72,6 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
         gbc.weightx = 1.0;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
-        GameRulesEditor gameRulesEditor = gameRulesEditorFactory.create(gameRulesEditorViewModel);
 
         ViewportWidthTrackingPanel viewportWrapper = new ViewportWidthTrackingPanel(new BorderLayout());
         viewportWrapper.add(gameRulesEditor, BorderLayout.NORTH);
@@ -195,6 +196,7 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        gameRulesEditor.close();
         leaveButtonEnabledBinding.close();
         errorMessageLabelVisibleBinding.close();
         errorMessageLabelTextBinding.close();

@@ -12,7 +12,7 @@
 ./gradlew build
 ```
 
-Output: `build/libs/bronzeman-unleashed-0.0.1.jar`
+Output: `build/libs/bronzeman-unleashed-0.2.0.jar`
 
 ## Run with RuneLite
 

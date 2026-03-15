@@ -7,11 +7,14 @@ import com.elertan.MemberService;
 import com.elertan.data.FromScratchUnlockedItemsDataProvider;
 import com.elertan.data.GameRulesDataProvider;
 import com.elertan.data.UnlockedItemsDataProvider;
+import com.elertan.data.MembersDataProvider;
+import com.elertan.models.AccountConfiguration;
 import com.elertan.models.GameRules;
 import com.elertan.models.ISOOffsetDateTime;
 import com.elertan.models.Member;
 import com.elertan.models.MemberRole;
 import com.elertan.models.UnlockedItem;
+import com.elertan.models.AccountConfiguration.StorageMode;
 import com.elertan.panel.components.GameRulesEditorViewModel;
 import com.elertan.ui.Property;
 import com.google.inject.ImplementedBy;
@@ -26,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 
 @Slf4j
-public class ConfigScreenViewModel {
+public class ConfigScreenViewModel implements AutoCloseable {
 
     public final Property<GameRulesEditorViewModel.Props> gameRulesEditorViewModelPropsProperty;
     public final Property<Boolean> isSubmittingProperty = new Property<>(false);
@@ -38,16 +41,20 @@ public class ConfigScreenViewModel {
     private final GameRulesDataProvider gameRulesDataProvider;
     private final UnlockedItemsDataProvider unlockedItemsDataProvider;
     private final FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
+    private final MembersDataProvider membersDataProvider;
     private final Runnable navigateToMainScreen;
+    private final MembersDataProvider.MemberMapListener memberMapListener;
 
     private GameRules gameRules;
     private Supplier<GameRulesEditorViewModel.Props> propsSupplier;
+    private volatile boolean closed;
 
     private ConfigScreenViewModel(Client client,
         AccountConfigurationService accountConfigurationService, GameRulesService gameRulesService,
         GameRulesDataProvider gameRulesDataProvider,
         UnlockedItemsDataProvider unlockedItemsDataProvider,
         FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider,
+        MembersDataProvider membersDataProvider,
         MemberService memberService,
         Runnable navigateToMainScreen) {
         this.accountConfigurationService = accountConfigurationService;
@@ -56,6 +63,7 @@ public class ConfigScreenViewModel {
         this.gameRulesDataProvider = gameRulesDataProvider;
         this.unlockedItemsDataProvider = unlockedItemsDataProvider;
         this.fromScratchUnlockedItemsDataProvider = fromScratchUnlockedItemsDataProvider;
+        this.membersDataProvider = membersDataProvider;
         this.navigateToMainScreen = navigateToMainScreen;
         propsSupplier = () -> {
             GameRules gameRules = gameRulesService.getGameRules().get();
@@ -65,16 +73,44 @@ public class ConfigScreenViewModel {
             } catch (Exception ignored) {
             }
             boolean isViewOnlyMode = member == null || member.getRole() != MemberRole.Owner;
+            boolean isLocalMode = false;
+            AccountConfiguration accountConfiguration =
+                accountConfigurationService.currentAccountConfiguration().get();
+            if (accountConfiguration != null) {
+                isLocalMode = accountConfiguration.getStorageMode() == StorageMode.LOCAL;
+            }
 
             return new GameRulesEditorViewModel.Props(
                 client.getAccountHash(),
                 gameRules,
                 (newGameRules) -> setGameRules(newGameRules),
-                isViewOnlyMode
+                isViewOnlyMode,
+                isLocalMode
             );
         };
 
         gameRulesEditorViewModelPropsProperty = new Property<>(propsSupplier.get());
+        memberMapListener = new MembersDataProvider.MemberMapListener() {
+            @Override
+            public void onUpdate(Member newMember, Member oldMember) {
+                refreshGameRulesEditorProps();
+            }
+
+            @Override
+            public void onDelete(Member member) {
+                refreshGameRulesEditorProps();
+            }
+        };
+        membersDataProvider.addMemberMapListener(memberMapListener);
+        membersDataProvider.await(null)
+            .whenComplete((__, throwable) -> {
+                if (throwable != null) {
+                    log.error("error waiting for members data to be ready", throwable);
+                    return;
+                }
+                refreshGameRulesEditorProps();
+            });
+
         gameRulesService.waitUntilGameRulesReady(null)
             .whenComplete((__, throwable) -> {
                 if (throwable != null) {
@@ -82,8 +118,14 @@ public class ConfigScreenViewModel {
                     return;
                 }
                 setGameRules(gameRulesService.getGameRules().get());
-                gameRulesEditorViewModelPropsProperty.set(propsSupplier.get());
+                refreshGameRulesEditorProps();
             });
+    }
+
+    @Override
+    public void close() {
+        closed = true;
+        membersDataProvider.removeMemberMapListener(memberMapListener);
     }
 
     public void onBackButtonClick() {
@@ -309,32 +351,20 @@ public class ConfigScreenViewModel {
                     isSubmittingProperty.set(false);
                 }
             });
+    private void refreshGameRulesEditorProps() {
+        if (closed) {
+            return;
+        }
+        gameRulesEditorViewModelPropsProperty.set(propsSupplier.get());
     }
 
     public void leaveButtonClick() {
         boolean isPlayingAlone = memberService.isPlayingAlone();
         Member member = memberService.getMyMember();
-
-        StringBuilder messageBuilder = new StringBuilder();
-        messageBuilder.append("Are you sure you want to leave?\n");
-        messageBuilder.append(
-            "You will no longer be able to access the unlocked items panel and Bronzeman mode will be deactivated for your account.\n\n");
-        if (!isPlayingAlone) {
-            messageBuilder.append("You will also be removed from the group");
-            if (member.getRole() == MemberRole.Owner) {
-                messageBuilder.append(
-                    ", and will pass on the ownership of the group to the member who has been in the group the longest");
-            }
-            messageBuilder.append(".\n\n");
-        }
-        messageBuilder.append(
-            "This will NOT delete the data associated with your progress, you can simply re-open the panel and get going through the setup again.");
-
-        // TODO: More stuff
         int result = JOptionPane.showConfirmDialog(
             null,
-            messageBuilder.toString(),
-            "Confirm Leave Bronzeman",
+            buildLeaveConfirmationMessage(isPlayingAlone, member),
+            "Leave Bronzeman for this account?",
             JOptionPane.OK_CANCEL_OPTION,
             JOptionPane.WARNING_MESSAGE
         );
@@ -373,6 +403,36 @@ public class ConfigScreenViewModel {
 
     }
 
+    private String buildLeaveConfirmationMessage(boolean isPlayingAlone, Member member) {
+        StringBuilder messageBuilder = new StringBuilder();
+        messageBuilder.append("This will turn off Bronzeman for this account.\n");
+
+        if (!isPlayingAlone) {
+            messageBuilder.append("You will also be removed from the group.\n");
+            if (member != null && member.getRole() == MemberRole.Owner) {
+                messageBuilder.append(
+                    "Group ownership will be passed to the member who has been in the group the longest.\n"
+                );
+            }
+        }
+
+        StorageMode storageMode = null;
+        AccountConfiguration accountConfiguration =
+            accountConfigurationService.currentAccountConfiguration().get();
+        if (accountConfiguration != null) {
+            storageMode = accountConfiguration.getStorageMode();
+        }
+
+        if (storageMode == StorageMode.LOCAL) {
+            messageBuilder.append("Your local progress will stay saved on this computer.\n");
+        } else {
+            messageBuilder.append("Your saved progress will not be deleted.\n");
+        }
+
+        messageBuilder.append("You can set Bronzeman up again later from this panel.");
+        return messageBuilder.toString();
+    }
+
     @ImplementedBy(FactoryImpl.class)
     public interface Factory {
 
@@ -395,6 +455,8 @@ public class ConfigScreenViewModel {
         @Inject
         private FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
         @Inject
+        private MembersDataProvider membersDataProvider;
+        @Inject
         private MemberService memberService;
 
         @Override
@@ -406,6 +468,7 @@ public class ConfigScreenViewModel {
                 gameRulesDataProvider,
                 unlockedItemsDataProvider,
                 fromScratchUnlockedItemsDataProvider,
+                membersDataProvider,
                 memberService,
                 navigateToMainScreen
             );

@@ -28,6 +28,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
     public final Property<Integer> valuableLootNotificationThresholdProperty;
     public final Property<String> partyPasswordProperty;
     public final Property<Boolean> isViewOnlyModeProperty;
+    public final Property<Boolean> isLocalModeProperty;
     private Props props;
     private final PropertyChangeListener updateListener = evt -> {
         log.debug("{} changed to: {}", evt.getPropertyName(), evt.getNewValue());
@@ -59,6 +60,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         partyPasswordProperty = new Property<>(gameRules.getPartyPassword());
 
         isViewOnlyModeProperty = new Property<>(initialProps.isViewOnlyMode());
+        isLocalModeProperty = new Property<>(initialProps.isLocalMode());
 //        isValid = Property.deriveMany(
 //                Arrays.asList(
 //                        preventTradeOutsideGroup,
@@ -90,8 +92,6 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         addListener(shareAchievementNotificationsProperty, updateListener);
         addListener(fromScratchProperty, updateListener);
         addListener(valuableLootNotificationThresholdProperty, updateListener);
-        addListener(partyPasswordProperty, updateListener);
-
         if (setGameRules) {
             initialProps.onGameRulesChanged.accept(gameRules);
         }
@@ -121,15 +121,15 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         valuableLootNotificationThresholdProperty.set(gameRules.getValuableLootNotificationThreshold());
 
         isViewOnlyModeProperty.set(props.isViewOnlyMode());
+        isLocalModeProperty.set(props.isLocalMode());
     }
 
     private boolean isValid() {
-        String partyPassword = partyPasswordProperty.get();
         Integer valuableLootNotificationThreshold = valuableLootNotificationThresholdProperty.get();
         if (valuableLootNotificationThreshold != null && valuableLootNotificationThreshold < 0) {
             return false;
         }
-        return partyPassword == null || partyPassword.length() <= 20;
+        return true;
     }
 
     private void tryUpdateGameRules() {
@@ -137,6 +137,9 @@ public class GameRulesEditorViewModel extends BaseViewModel {
             props.onGameRulesChanged.accept(null);
             return;
         }
+
+        GameRules currentGameRules = props.getGameRules();
+        String partyPassword = currentGameRules == null ? null : currentGameRules.getPartyPassword();
 
         GameRules newGameRules = GameRules.builder()
             .lastUpdatedByAccountHash(props.getAccountHash())
@@ -155,7 +158,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
                 ? null
                 : props.getGameRules().getFromScratchStartedAt())
             .valuableLootNotificationThreshold(valuableLootNotificationThresholdProperty.get())
-            .partyPassword(partyPasswordProperty.get())
+            .partyPassword(partyPassword)
             .build();
         props.onGameRulesChanged.accept(newGameRules);
     }
@@ -173,6 +176,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         GameRules gameRules;
         Consumer<GameRules> onGameRulesChanged;
         boolean isViewOnlyMode;
+        boolean isLocalMode;
     }
 
     @Singleton

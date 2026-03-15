@@ -13,19 +13,22 @@ public class GameRulesStepViewViewModel {
     public final Property<GameRules> gameRules;
     public final Property<Boolean> requiresGroupRuleAcknowledgement;
     public final Property<Boolean> groupRuleAcknowledged;
+    public final Property<Boolean> isLocalMode;
     public final Property<Boolean> isSubmitting = new Property<>(false);
     public final Property<String> errorMessage = new Property<>(null);
     private final Listener listener;
 
     private GameRulesStepViewViewModel(
         Property<GameRules> gameRules,
-        Property<Boolean> requiresGroupRuleAcknowledgement,
+Property<Boolean> requiresGroupRuleAcknowledgement,
         Property<Boolean> groupRuleAcknowledged,
+        Property<Boolean> isLocalMode,
         Listener listener
     ) {
         this.gameRules = gameRules;
         this.requiresGroupRuleAcknowledgement = requiresGroupRuleAcknowledgement;
         this.groupRuleAcknowledged = groupRuleAcknowledged;
+        this.isLocalMode = isLocalMode;
         this.listener = listener;
     }
 
@@ -67,6 +70,7 @@ public class GameRulesStepViewViewModel {
             Property<GameRules> gameRules,
             Property<Boolean> requiresGroupRuleAcknowledgement,
             Property<Boolean> groupRuleAcknowledged,
+            Property<Boolean> isLocalMode,
             Listener listener
         );
     }
@@ -86,12 +90,14 @@ public class GameRulesStepViewViewModel {
             Property<GameRules> gameRules,
             Property<Boolean> requiresGroupRuleAcknowledgement,
             Property<Boolean> groupRuleAcknowledged,
+            Property<Boolean> isLocalMode,
             Listener listener
         ) {
             return new GameRulesStepViewViewModel(
                 gameRules,
                 requiresGroupRuleAcknowledgement,
                 groupRuleAcknowledged,
+                isLocalMode,
                 listener
             );
         }

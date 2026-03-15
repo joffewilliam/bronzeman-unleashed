@@ -31,9 +31,10 @@ import javax.swing.SwingConstants;
 import javax.swing.text.NumberFormatter;
 import net.runelite.client.ui.ColorScheme;
 
-public class GameRulesEditor extends JPanel {
+public class GameRulesEditor extends JPanel implements AutoCloseable {
 
     private final GameRulesEditorViewModel viewModel;
+    private final AutoCloseable notificationsSectionVisibleBinding;
 
     private GameRulesEditor(GameRulesEditorViewModel viewModel) {
         this.viewModel = viewModel;
@@ -121,15 +122,17 @@ public class GameRulesEditor extends JPanel {
         );
         gbc.gridy++;
 
-        add(
-            createSection(
-                "Notifications",
-                "Notification settings",
-                createNotificationsPanel(),
-                true
-            ),
-            gbc
+        JPanel notificationsSection = createSection(
+            "Notifications",
+            "Notification settings",
+            createNotificationsPanel(),
+            true
         );
+        notificationsSectionVisibleBinding = Bindings.bindVisible(
+            notificationsSection,
+            viewModel.isLocalModeProperty.derive(isLocalMode -> !Boolean.TRUE.equals(isLocalMode))
+        );
+        add(notificationsSection, gbc);
         gbc.gridy++;
 
         add(createSection("Party", "Controls the party settings", createPartyPanel(), true), gbc);
@@ -137,6 +140,11 @@ public class GameRulesEditor extends JPanel {
 
         add(Box.createVerticalStrut(20), gbc);
         gbc.gridy++;
+    }
+
+    @Override
+    public void close() throws Exception {
+        notificationsSectionVisibleBinding.close();
     }
 
     private JPanel createSection(String title, String description, JComponent content,
@@ -573,15 +581,13 @@ public class GameRulesEditor extends JPanel {
         gbc.insets = new Insets(0, 0, 5, 0);
 
         JPasswordField partyPasswordTextField = new JPasswordField();
+        partyPasswordTextField.setEditable(false);
+        partyPasswordTextField.setEnabled(false);
         Bindings.bindTextFieldText(partyPasswordTextField, viewModel.partyPasswordProperty);
-        Bindings.bindEnabled(
-            partyPasswordTextField,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
         panel.add(
             createTextFieldInput(
                 "Party password",
-                "When auto-join is enabled in the plugin configuration, use this password to join the group's party",
+                "Reserved for a future party-join action. This value is currently read-only.",
                 partyPasswordTextField
             ), gbc
         );
