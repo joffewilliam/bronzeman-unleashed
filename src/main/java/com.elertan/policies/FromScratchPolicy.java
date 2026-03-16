@@ -556,6 +556,13 @@ public class FromScratchPolicy extends PolicyBase {
     }
 
     private void evaluateDepositCleanupState() {
+        if (!itemUnlockService.isFromScratchUnlockedItemsDataProviderReady()) {
+            if (itemUnlockService.isSuppressFromScratchInventoryAndWornUnlocking()) {
+                itemUnlockService.setSuppressFromScratchInventoryAndWornUnlocking(false);
+            }
+            return;
+        }
+
         boolean hasLockedItemsInInventoryOrWorn = hasLockedItemsInInventoryOrWorn();
 
         if (hasLockedItemsInInventoryOrWorn) {

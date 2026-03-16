@@ -39,10 +39,10 @@ import okhttp3.OkHttpClient;
 
 @Slf4j
 @Singleton
-public class RemoteStorageService implements BUPluginLifecycle {
+public class RemoteStorageService implements BUPluginLifecycle, StorageStateSource {
 
     @Getter
-    private final Observable<State> state = Observable.of(State.NotReady);
+    private final Observable<StorageStateSource.State> state = Observable.of(StorageStateSource.State.NotReady);
     private Subscription accountConfigSubscription;
     @Inject
     private OkHttpClient httpClient;
@@ -90,7 +90,7 @@ public class RemoteStorageService implements BUPluginLifecycle {
      * Wait until remote storage is ready (state == State.Ready).
      */
     public CompletableFuture<State> await(Duration timeout) {
-        return waitForValue(state, State.Ready, timeout);
+        return waitForValue(state, StorageStateSource.State.Ready, timeout);
     }
 
     /**
@@ -152,11 +152,11 @@ public class RemoteStorageService implements BUPluginLifecycle {
         FirebaseRealtimeDatabaseURL url = accountConfiguration.getFirebaseRealtimeDatabaseURL();
         configureFromFirebaseRealtimeDatabase(url);
 
-        state.set(State.Ready);
+        state.set(StorageStateSource.State.Ready);
     }
 
     private void clearCurrentDataport() throws Exception {
-        state.set(State.NotReady);
+        state.set(StorageStateSource.State.NotReady);
 
         if (groundItemOwnedByStoragePort != null) {
             groundItemOwnedByStoragePort.close();
@@ -233,8 +233,4 @@ public class RemoteStorageService implements BUPluginLifecycle {
         stream.start();
     }
 
-    public enum State {
-        NotReady,
-        Ready
-    }
 }

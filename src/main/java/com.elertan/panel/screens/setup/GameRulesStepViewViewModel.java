@@ -37,6 +37,10 @@ Property<Boolean> requiresGroupRuleAcknowledgement,
     }
 
     public void onFinishButtonClicked() {
+        if (Boolean.TRUE.equals(isSubmitting.get())) {
+            return;
+        }
+
         Boolean requiresAcknowledgement = requiresGroupRuleAcknowledgement.get();
         Boolean acknowledged = groupRuleAcknowledged.get();
         if (requiresAcknowledgement != null

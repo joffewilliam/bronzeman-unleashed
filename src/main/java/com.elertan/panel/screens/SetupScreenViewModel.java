@@ -216,9 +216,12 @@ public final class SetupScreenViewModel implements AutoCloseable {
 
         GameRules gameRulesValue = this.gameRules.get();
         if (gameRulesValue == null) {
-            Exception ex = new IllegalStateException("Game rules are not set");
-            future.completeExceptionally(ex);
-            return future;
+            log.warn("Game rules were null during setup finish, recreating defaults.");
+            gameRulesValue = GameRules.createWithDefaults(
+                client.getAccountHash(),
+                new ISOOffsetDateTime(OffsetDateTime.now())
+            );
+            this.gameRules.set(gameRulesValue);
         }
         GameRules normalizedGameRulesValue = gameRulesValue;
         if (normalizedGameRulesValue.isFromScratch()

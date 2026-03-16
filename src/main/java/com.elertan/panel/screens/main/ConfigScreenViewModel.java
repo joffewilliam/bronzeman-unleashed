@@ -351,6 +351,8 @@ public class ConfigScreenViewModel implements AutoCloseable {
                     isSubmittingProperty.set(false);
                 }
             });
+    }
+
     private void refreshGameRulesEditorProps() {
         if (closed) {
             return;

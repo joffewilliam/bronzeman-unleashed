@@ -355,7 +355,7 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
     public boolean hasUnlockedItem(int initialItemId) throws IllegalStateException {
         if (activeUnlockedItemsDataProviderNotReady()) {
-            throw new IllegalStateException("State is not READY");
+            return false;
         }
 
         int itemId = canonicalizeItemId(initialItemId);
@@ -367,7 +367,8 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
         Map<Integer, UnlockedItem> map = getActiveUnlockedItemsMap();
         if (map == null) {
-            throw new IllegalStateException("Unlocked items map is null");
+            log.warn("Unlocked items map is null while checking item {}", itemId);
+            return false;
         }
         return map.containsKey(itemId);
     }
@@ -528,9 +529,17 @@ public class ItemUnlockService implements BUPluginLifecycle {
         }
 
         clientThread.invokeLater(() -> {
-            Map<Integer, UnlockedItem> map = getActiveUnlockedItemsMap();
+            if (isFromScratchActive() != fromScratchProvider) {
+                return;
+            }
+
+            Map<Integer, UnlockedItem> map = getUnlockedItemsMap(fromScratchProvider);
             if (map == null) {
-                throw new IllegalStateException("Unlocked items map is null");
+                log.warn(
+                    "Unlocked items map is null for provider {}, skipping initial container scan",
+                    fromScratchProvider ? "from-scratch" : "standard"
+                );
+                return;
             }
             int unlockedItemsSize = map.size();
             buChatService.sendMessage(String.format(
@@ -586,6 +595,18 @@ public class ItemUnlockService implements BUPluginLifecycle {
         return suppressFromScratchInventoryAndWornUnlocking;
     }
 
+    public boolean isActiveUnlockedItemsDataProviderReady() {
+        return !activeUnlockedItemsDataProviderNotReady() && getActiveUnlockedItemsMap() != null;
+    }
+
+    public boolean isFromScratchUnlockedItemsDataProviderReady() {
+        AbstractDataProvider.State fromScratchState = fromScratchUnlockedItemsDataProvider.getState().get();
+        if (fromScratchState != AbstractDataProvider.State.Ready) {
+            return false;
+        }
+        return fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap() != null;
+    }
+
     private boolean isFromScratchActive() {
         GameRules gameRules = gameRulesService.getGameRules().get();
         return gameRules != null && gameRules.isFromScratch();
@@ -593,6 +614,13 @@ public class ItemUnlockService implements BUPluginLifecycle {
 
     private Map<Integer, UnlockedItem> getActiveUnlockedItemsMap() {
         if (isFromScratchActive()) {
+            return fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap();
+        }
+        return unlockedItemsDataProvider.getUnlockedItemsMap();
+    }
+
+    private Map<Integer, UnlockedItem> getUnlockedItemsMap(boolean fromScratchProvider) {
+        if (fromScratchProvider) {
             return fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap();
         }
         return unlockedItemsDataProvider.getUnlockedItemsMap();

@@ -1,7 +1,7 @@
 package com.elertan.data;
 
 import com.elertan.BUPluginLifecycle;
-import com.elertan.remote.StorageService;
+import com.elertan.remote.StorageStateSource;
 import com.elertan.utils.Observable;
 import com.elertan.utils.Subscription;
 import java.time.Duration;
@@ -27,7 +27,7 @@ public abstract class AbstractDataProvider implements BUPluginLifecycle {
     /**
      * Subclasses must provide the StorageService instance.
      */
-    protected abstract StorageService getStorageService();
+    protected abstract StorageStateSource getStorageService();
 
     /**
      * Called when StorageService becomes ready.
@@ -114,11 +114,11 @@ public abstract class AbstractDataProvider implements BUPluginLifecycle {
         state.set(newState);
     }
 
-    private void onStorageStateChanged(StorageService.State storageState) {
-        if (storageState == StorageService.State.NotReady) {
+    private void onStorageStateChanged(StorageStateSource.State storageState) {
+        if (storageState == StorageStateSource.State.NotReady) {
             onRemoteStorageNotReady();
             setState(State.NotReady);
-        } else if (storageState == StorageService.State.Ready) {
+        } else if (storageState == StorageStateSource.State.Ready) {
             onRemoteStorageReady();
         }
     }

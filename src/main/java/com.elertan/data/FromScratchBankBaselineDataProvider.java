@@ -3,6 +3,7 @@ package com.elertan.data;
 import com.elertan.models.FromScratchBankBaselineEntry;
 import com.elertan.remote.KeyValueStoragePort;
 import com.elertan.remote.RemoteStorageService;
+import com.elertan.remote.StorageStateSource;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.util.Collections;
@@ -23,7 +24,7 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
     private ConcurrentHashMap<String, FromScratchBankBaselineEntry> map;
 
     @Override
-    protected RemoteStorageService getRemoteStorageService() {
+    protected StorageStateSource getStorageService() {
         return remoteStorageService;
     }
 
