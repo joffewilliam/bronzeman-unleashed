@@ -34,10 +34,10 @@ import net.runelite.api.GameState;
 
 @Slf4j
 @Singleton
-public class StorageService implements BUPluginLifecycle {
+public class StorageService implements BUPluginLifecycle, StorageStateSource {
 
     @Getter
-    private final Observable<State> state = Observable.of(State.NotReady);
+    private final Observable<StorageStateSource.State> state = Observable.of(StorageStateSource.State.NotReady);
     @Getter
     private final Observable<LocalProgressOpenFailure> localProgressOpenFailure = Observable.empty();
     private final AccountConfigurationService accountConfigurationService;
@@ -89,8 +89,8 @@ public class StorageService implements BUPluginLifecycle {
         }
     }
 
-    public CompletableFuture<State> await(Duration timeout) {
-        return waitForValue(state, State.Ready, timeout);
+    public CompletableFuture<StorageStateSource.State> await(Duration timeout) {
+        return waitForValue(state, StorageStateSource.State.Ready, timeout);
     }
 
     private static <T> CompletableFuture<T> waitForValue(
@@ -173,7 +173,7 @@ public class StorageService implements BUPluginLifecycle {
             gameRulesStoragePort = newStorageSession.getGameRulesStoragePort();
             lastEventStoragePort = newStorageSession.getLastEventStoragePort();
             groundItemOwnedByStoragePort = newStorageSession.getGroundItemOwnedByStoragePort();
-            state.set(State.Ready);
+            state.set(StorageStateSource.State.Ready);
         });
     }
 
@@ -267,7 +267,7 @@ public class StorageService implements BUPluginLifecycle {
     }
 
     private void clearCurrentSession() throws Exception {
-        state.set(State.NotReady);
+        state.set(StorageStateSource.State.NotReady);
 
         if (storageSession != null) {
             storageSession.close();
@@ -279,11 +279,6 @@ public class StorageService implements BUPluginLifecycle {
         membersStoragePort = null;
         unlockedItemsStoragePort = null;
         gameRulesStoragePort = null;
-    }
-
-    public enum State {
-        NotReady,
-        Ready
     }
 
     public static final class LocalProgressOpenFailure {
