@@ -23,8 +23,10 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import javax.swing.JOptionPane;
 import lombok.extern.slf4j.Slf4j;
@@ -151,6 +153,7 @@ public class ConfigScreenViewModel implements AutoCloseable {
 
         GameRules targetGameRules = gameRules;
         CompletableFuture<Void> preSaveFuture = CompletableFuture.completedFuture(null);
+        Supplier<CompletableFuture<Void>> rollbackPreSaveChanges = CompletableFuture::completedFuture;
 
         boolean transitionToEnabled = FromScratchModeUtils.isTransitionToEnabled(
             currentGameRules,
@@ -187,7 +190,11 @@ public class ConfigScreenViewModel implements AutoCloseable {
                     .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
                     .build();
 
+                Map<Integer, UnlockedItem> previousFromScratchUnlocks = snapshotUnlockedItemsMap(
+                    fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap()
+                );
                 preSaveFuture = fromScratchUnlockedItemsDataProvider.clearAll();
+                rollbackPreSaveChanges = () -> restoreFromScratchUnlockList(previousFromScratchUnlocks);
             }
         } else if (transitionToDisabled) {
             StopFromScratchChoice stopChoice = promptStopFromScratchChoice();
@@ -201,7 +208,9 @@ public class ConfigScreenViewModel implements AutoCloseable {
                 .build();
 
             if (stopChoice == StopFromScratchChoice.StopAndMerge) {
-                preSaveFuture = mergeFromScratchUnlocksIntoMainList();
+                MergeFromScratchResult mergeResult = mergeFromScratchUnlocksIntoMainList();
+                preSaveFuture = mergeResult.applyFuture;
+                rollbackPreSaveChanges = () -> removeMergedItemsFromMainUnlockList(mergeResult.addedItemIds);
             }
             // StopKeepSeparate: do NOT clear From Scratch list in Firebase; leave it preserved
             // so the user can turn From Scratch back on later and still see their list.
@@ -228,27 +237,43 @@ public class ConfigScreenViewModel implements AutoCloseable {
         }
 
         final GameRules gameRulesToPersist = targetGameRules;
+        final Supplier<CompletableFuture<Void>> rollbackAction = rollbackPreSaveChanges;
+        final AtomicBoolean preSaveApplied = new AtomicBoolean(false);
         isSubmittingProperty.set(true);
 
-        preSaveFuture.thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
+        preSaveFuture
+            .thenRun(() -> preSaveApplied.set(true))
+            .thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
             .whenComplete((__, throwable) -> {
-                try {
-                    if (throwable != null) {
-                        log.error(
-                            "An error occurred while trying to save the game rules.",
-                            throwable
-                        );
-                        errorMessageProperty.set(
-                            "An error occurred while trying to save the game rules.");
-                        return;
-                    }
-
+                if (throwable == null) {
                     errorMessageProperty.set(null);
                     setGameRules(gameRulesToPersist);
                     navigateToMainScreen.run();
-                } finally {
                     isSubmittingProperty.set(false);
+                    return;
                 }
+
+                log.error("An error occurred while trying to save the game rules.", throwable);
+
+                if (!preSaveApplied.get()) {
+                    errorMessageProperty.set("An error occurred while trying to save the game rules.");
+                    isSubmittingProperty.set(false);
+                    return;
+                }
+
+                rollbackAction.get().whenComplete((___, rollbackThrowable) -> {
+                    if (rollbackThrowable != null) {
+                        log.error("Failed to rollback pre-save game-rules transition changes.", rollbackThrowable);
+                        errorMessageProperty.set(
+                            "An error occurred while saving game rules, and rollback also failed. Please retry."
+                        );
+                    } else {
+                        errorMessageProperty.set(
+                            "An error occurred while saving game rules. Previous unlock-list data was restored."
+                        );
+                    }
+                    isSubmittingProperty.set(false);
+                });
             });
     }
 
@@ -386,16 +411,20 @@ public class ConfigScreenViewModel implements AutoCloseable {
         }
     }
 
-    private CompletableFuture<Void> mergeFromScratchUnlocksIntoMainList() {
+    private MergeFromScratchResult mergeFromScratchUnlocksIntoMainList() {
         Map<Integer, UnlockedItem> fromScratchMap = fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap();
         Map<Integer, UnlockedItem> unlockedItemsMap = unlockedItemsDataProvider.getUnlockedItemsMap();
 
         if (fromScratchMap == null || unlockedItemsMap == null) {
-            return CompletableFuture.failedFuture(
-                new IllegalStateException("Unlock lists are not ready for merging")
+            return new MergeFromScratchResult(
+                CompletableFuture.failedFuture(
+                    new IllegalStateException("Unlock lists are not ready for merging")
+                ),
+                new HashMap<>()
             );
         }
 
+        Map<Integer, UnlockedItem> addedItems = new HashMap<>();
         CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
         for (Map.Entry<Integer, UnlockedItem> entry : fromScratchMap.entrySet()) {
             int itemId = entry.getKey();
@@ -404,7 +433,39 @@ public class ConfigScreenViewModel implements AutoCloseable {
             }
 
             UnlockedItem unlockedItem = entry.getValue();
+            addedItems.put(itemId, unlockedItem);
             future = future.thenCompose(__ -> unlockedItemsDataProvider.addUnlockedItem(unlockedItem));
+        }
+        return new MergeFromScratchResult(future, addedItems);
+    }
+
+    private CompletableFuture<Void> removeMergedItemsFromMainUnlockList(Map<Integer, UnlockedItem> addedItems) {
+        if (addedItems == null || addedItems.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (Integer itemId : addedItems.keySet()) {
+            future = future.thenCompose(__ -> unlockedItemsDataProvider.removeUnlockedItemById(itemId));
+        }
+        return future;
+    }
+
+    private Map<Integer, UnlockedItem> snapshotUnlockedItemsMap(Map<Integer, UnlockedItem> source) {
+        if (source == null || source.isEmpty()) {
+            return new HashMap<>();
+        }
+        return new HashMap<>(source);
+    }
+
+    private CompletableFuture<Void> restoreFromScratchUnlockList(Map<Integer, UnlockedItem> snapshot) {
+        CompletableFuture<Void> future = fromScratchUnlockedItemsDataProvider.clearAll();
+        if (snapshot == null || snapshot.isEmpty()) {
+            return future;
+        }
+
+        for (UnlockedItem unlockedItem : snapshot.values()) {
+            future = future.thenCompose(__ -> fromScratchUnlockedItemsDataProvider.addUnlockedItem(unlockedItem));
         }
         return future;
     }
@@ -443,28 +504,47 @@ public class ConfigScreenViewModel implements AutoCloseable {
             .build();
 
         final GameRules gameRulesToPersist = targetGameRules;
+        Map<Integer, UnlockedItem> previousFromScratchUnlocks = snapshotUnlockedItemsMap(
+            fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap()
+        );
+        final AtomicBoolean preSaveApplied = new AtomicBoolean(false);
         isSubmittingProperty.set(true);
 
         fromScratchUnlockedItemsDataProvider.clearAll()
+            .thenRun(() -> preSaveApplied.set(true))
             .thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
             .whenComplete((__, throwable) -> {
-                try {
-                    if (throwable != null) {
-                        log.error(
-                            "An error occurred while trying to start from scratch.",
-                            throwable
-                        );
-                        errorMessageProperty.set(
-                            "An error occurred while trying to save the game rules.");
-                        return;
-                    }
+                if (throwable == null) {
                     errorMessageProperty.set(null);
                     setGameRules(gameRulesToPersist);
                     gameRulesEditorViewModelPropsProperty.set(propsSupplier.get());
                     navigateToMainScreen.run();
-                } finally {
                     isSubmittingProperty.set(false);
+                    return;
                 }
+
+                log.error("An error occurred while trying to start from scratch.", throwable);
+
+                if (!preSaveApplied.get()) {
+                    errorMessageProperty.set("An error occurred while trying to save the game rules.");
+                    isSubmittingProperty.set(false);
+                    return;
+                }
+
+                restoreFromScratchUnlockList(previousFromScratchUnlocks)
+                    .whenComplete((___, rollbackThrowable) -> {
+                        if (rollbackThrowable != null) {
+                            log.error("Failed to rollback one-click Start From Scratch changes.", rollbackThrowable);
+                            errorMessageProperty.set(
+                                "An error occurred while saving game rules, and rollback also failed. Please retry."
+                            );
+                        } else {
+                            errorMessageProperty.set(
+                                "An error occurred while saving game rules. Previous unlock-list data was restored."
+                            );
+                        }
+                        isSubmittingProperty.set(false);
+                    });
             });
     }
 
@@ -599,6 +679,19 @@ public class ConfigScreenViewModel implements AutoCloseable {
         Cancel,
         StartNewRun,
         ResumePreviousRun
+    }
+
+    private static class MergeFromScratchResult {
+        private final CompletableFuture<Void> applyFuture;
+        private final Map<Integer, UnlockedItem> addedItemIds;
+
+        private MergeFromScratchResult(
+            CompletableFuture<Void> applyFuture,
+            Map<Integer, UnlockedItem> addedItemIds
+        ) {
+            this.applyFuture = applyFuture;
+            this.addedItemIds = addedItemIds;
+        }
     }
 
     private enum StopFromScratchChoice {

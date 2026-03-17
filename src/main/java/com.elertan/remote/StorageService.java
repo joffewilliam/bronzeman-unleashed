@@ -5,6 +5,7 @@ import com.elertan.BUPluginLifecycle;
 import com.elertan.event.BUEvent;
 import com.elertan.models.AccountConfiguration;
 import com.elertan.models.AccountConfiguration.StorageMode;
+import com.elertan.models.FromScratchBankBaselineEntry;
 import com.elertan.models.GameRules;
 import com.elertan.models.GroundItemOwnedByData;
 import com.elertan.models.GroundItemOwnedByKey;
@@ -51,6 +52,10 @@ public class StorageService implements BUPluginLifecycle, StorageStateSource {
     private KeyValueStoragePort<Long, Member> membersStoragePort;
     @Getter
     private KeyValueStoragePort<Integer, UnlockedItem> unlockedItemsStoragePort;
+    @Getter
+    private KeyValueStoragePort<Integer, UnlockedItem> fromScratchUnlockedItemsStoragePort;
+    @Getter
+    private KeyValueStoragePort<String, FromScratchBankBaselineEntry> fromScratchBankBaselineStoragePort;
     @Getter
     private ObjectStoragePort<GameRules> gameRulesStoragePort;
     @Getter
@@ -170,6 +175,8 @@ public class StorageService implements BUPluginLifecycle, StorageStateSource {
             storageSession = newStorageSession;
             membersStoragePort = newStorageSession.getMembersStoragePort();
             unlockedItemsStoragePort = newStorageSession.getUnlockedItemsStoragePort();
+            fromScratchUnlockedItemsStoragePort = newStorageSession.getFromScratchUnlockedItemsStoragePort();
+            fromScratchBankBaselineStoragePort = newStorageSession.getFromScratchBankBaselineStoragePort();
             gameRulesStoragePort = newStorageSession.getGameRulesStoragePort();
             lastEventStoragePort = newStorageSession.getLastEventStoragePort();
             groundItemOwnedByStoragePort = newStorageSession.getGroundItemOwnedByStoragePort();
@@ -278,6 +285,8 @@ public class StorageService implements BUPluginLifecycle, StorageStateSource {
         lastEventStoragePort = null;
         membersStoragePort = null;
         unlockedItemsStoragePort = null;
+        fromScratchUnlockedItemsStoragePort = null;
+        fromScratchBankBaselineStoragePort = null;
         gameRulesStoragePort = null;
     }
 

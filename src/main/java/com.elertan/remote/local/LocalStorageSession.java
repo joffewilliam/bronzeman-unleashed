@@ -1,6 +1,7 @@
 package com.elertan.remote.local;
 
 import com.elertan.event.BUEvent;
+import com.elertan.models.FromScratchBankBaselineEntry;
 import com.elertan.models.GameRules;
 import com.elertan.models.GroundItemOwnedByData;
 import com.elertan.models.GroundItemOwnedByKey;
@@ -28,6 +29,8 @@ public class LocalStorageSession implements StorageSession {
 
     private final KeyValueStoragePort<Long, Member> membersStoragePort;
     private final KeyValueStoragePort<Integer, UnlockedItem> unlockedItemsStoragePort;
+    private final KeyValueStoragePort<Integer, UnlockedItem> fromScratchUnlockedItemsStoragePort;
+    private final KeyValueStoragePort<String, FromScratchBankBaselineEntry> fromScratchBankBaselineStoragePort;
     private final ObjectStoragePort<GameRules> gameRulesStoragePort;
     private final ObjectListStoragePort<BUEvent> lastEventStoragePort;
     private final KeyListStoragePort<GroundItemOwnedByKey, GroundItemOwnedByData> groundItemOwnedByStoragePort;
@@ -43,6 +46,20 @@ public class LocalStorageSession implements StorageSession {
             Object::toString,
             Integer::valueOf,
             UnlockedItem.class
+        );
+        fromScratchUnlockedItemsStoragePort = new LocalStorageAdapters.JsonFileKeyValueStorageAdapter<>(
+            accountStorageDirectory.resolve("FromScratchUnlockedItems.json"),
+            gson,
+            Object::toString,
+            Integer::valueOf,
+            UnlockedItem.class
+        );
+        fromScratchBankBaselineStoragePort = new LocalStorageAdapters.JsonFileKeyValueStorageAdapter<>(
+            accountStorageDirectory.resolve("FromScratchBankBaseline.json"),
+            gson,
+            (key) -> key,
+            (key) -> key,
+            FromScratchBankBaselineEntry.class
         );
         gameRulesStoragePort = new LocalStorageAdapters.JsonFileObjectStorageAdapter<>(
             accountStorageDirectory.resolve("GameRules.json"),
@@ -96,6 +113,16 @@ public class LocalStorageSession implements StorageSession {
     }
 
     @Override
+    public KeyValueStoragePort<Integer, UnlockedItem> getFromScratchUnlockedItemsStoragePort() {
+        return fromScratchUnlockedItemsStoragePort;
+    }
+
+    @Override
+    public KeyValueStoragePort<String, FromScratchBankBaselineEntry> getFromScratchBankBaselineStoragePort() {
+        return fromScratchBankBaselineStoragePort;
+    }
+
+    @Override
     public ObjectStoragePort<GameRules> getGameRulesStoragePort() {
         return gameRulesStoragePort;
     }
@@ -116,6 +143,8 @@ public class LocalStorageSession implements StorageSession {
         lastEventStoragePort.close();
         membersStoragePort.close();
         unlockedItemsStoragePort.close();
+        fromScratchUnlockedItemsStoragePort.close();
+        fromScratchBankBaselineStoragePort.close();
         gameRulesStoragePort.close();
     }
 

@@ -2,7 +2,7 @@ package com.elertan.data;
 
 import com.elertan.models.UnlockedItem;
 import com.elertan.remote.KeyValueStoragePort;
-import com.elertan.remote.RemoteStorageService;
+import com.elertan.remote.StorageService;
 import com.elertan.remote.StorageStateSource;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -20,7 +20,7 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
     private final ConcurrentLinkedQueue<UnlockedItemsMapListener> unlockedItemsMapListeners = new ConcurrentLinkedQueue<>();
 
     @Inject
-    private RemoteStorageService remoteStorageService;
+    private StorageService storageService;
 
     private KeyValueStoragePort<Integer, UnlockedItem> keyValueStoragePort;
     private KeyValueStoragePort.Listener<Integer, UnlockedItem> storagePortListener;
@@ -28,7 +28,7 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
 
     @Override
     protected StorageStateSource getStorageService() {
-        return remoteStorageService;
+        return storageService;
     }
 
     @Override
@@ -80,7 +80,7 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
 
     @Override
     protected void onRemoteStorageReady() {
-        keyValueStoragePort = remoteStorageService.getFromScratchUnlockedItemsStoragePort();
+        keyValueStoragePort = storageService.getFromScratchUnlockedItemsStoragePort();
         keyValueStoragePort.addListener(storagePortListener);
 
         keyValueStoragePort.readAll().whenComplete((map, throwable) -> {

@@ -1,6 +1,7 @@
 package com.elertan.remote.firebase;
 
 import com.elertan.event.BUEvent;
+import com.elertan.models.FromScratchBankBaselineEntry;
 import com.elertan.models.GameRules;
 import com.elertan.models.GroundItemOwnedByData;
 import com.elertan.models.GroundItemOwnedByKey;
@@ -15,6 +16,8 @@ import com.elertan.remote.firebase.storageAdapters.GameRulesFirebaseObjectStorag
 import com.elertan.remote.firebase.storageAdapters.GroundItemOwnedByKeyListStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.LastEventFirebaseObjectListStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.MembersFirebaseKeyValueStorageAdapter;
+import com.elertan.remote.firebase.storageAdapters.FromScratchBankBaselineFirebaseKeyValueStorageAdapter;
+import com.elertan.remote.firebase.storageAdapters.FromScratchUnlockedItemsFirebaseKeyValueStorageAdapter;
 import com.elertan.remote.firebase.storageAdapters.UnlockedItemsFirebaseKeyValueStorageAdapter;
 import com.google.gson.Gson;
 import javax.inject.Inject;
@@ -26,6 +29,8 @@ public class FirebaseStorageSession implements StorageSession {
     private final FirebaseRealtimeDatabase firebaseRealtimeDatabase;
     private final KeyValueStoragePort<Long, Member> membersStoragePort;
     private final KeyValueStoragePort<Integer, UnlockedItem> unlockedItemsStoragePort;
+    private final KeyValueStoragePort<Integer, UnlockedItem> fromScratchUnlockedItemsStoragePort;
+    private final KeyValueStoragePort<String, FromScratchBankBaselineEntry> fromScratchBankBaselineStoragePort;
     private final ObjectStoragePort<GameRules> gameRulesStoragePort;
     private final ObjectListStoragePort<BUEvent> lastEventStoragePort;
     private final KeyListStoragePort<GroundItemOwnedByKey, GroundItemOwnedByData> groundItemOwnedByStoragePort;
@@ -53,6 +58,14 @@ public class FirebaseStorageSession implements StorageSession {
             firebaseRealtimeDatabase,
             gson
         );
+        fromScratchUnlockedItemsStoragePort = new FromScratchUnlockedItemsFirebaseKeyValueStorageAdapter(
+            firebaseRealtimeDatabase,
+            gson
+        );
+        fromScratchBankBaselineStoragePort = new FromScratchBankBaselineFirebaseKeyValueStorageAdapter(
+            firebaseRealtimeDatabase,
+            gson
+        );
         gameRulesStoragePort = new GameRulesFirebaseObjectStorageAdapter(
             firebaseRealtimeDatabase,
             gson
@@ -69,6 +82,16 @@ public class FirebaseStorageSession implements StorageSession {
     @Override
     public KeyValueStoragePort<Integer, UnlockedItem> getUnlockedItemsStoragePort() {
         return unlockedItemsStoragePort;
+    }
+
+    @Override
+    public KeyValueStoragePort<Integer, UnlockedItem> getFromScratchUnlockedItemsStoragePort() {
+        return fromScratchUnlockedItemsStoragePort;
+    }
+
+    @Override
+    public KeyValueStoragePort<String, FromScratchBankBaselineEntry> getFromScratchBankBaselineStoragePort() {
+        return fromScratchBankBaselineStoragePort;
     }
 
     @Override
@@ -92,6 +115,8 @@ public class FirebaseStorageSession implements StorageSession {
         lastEventStoragePort.close();
         membersStoragePort.close();
         unlockedItemsStoragePort.close();
+        fromScratchUnlockedItemsStoragePort.close();
+        fromScratchBankBaselineStoragePort.close();
         gameRulesStoragePort.close();
 
         firebaseRealtimeDatabase.getStream().stop();

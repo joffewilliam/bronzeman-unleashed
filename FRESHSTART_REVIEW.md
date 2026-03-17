@@ -8,6 +8,9 @@
 - Improves startup/sync behavior so data providers wait for storage to be ready.
 - Updates setup and config screens so the mode is easier to use and understand.
 - Adds an explicit activation guidance message: open bank once to capture the first baseline snapshot.
+- Adds a Resume vs Start New flow when re-enabling From Scratch.
+- Adds rollback safety so unlock-list changes are restored if game-rules save fails (mostly a firebase safety measure).
+- Wires From Scratch unlock/baseline storage through unified storage paths for both local and online modes.
 
 ## How From Scratch Mode Works (End-to-End)
 
@@ -33,6 +36,12 @@
   - Fix: Baseline-only items are shown as unavailable, and usable quantity now follows unlocked-items state.
 - Bug: Local/online mode branching in setup/config screens was inconsistent in some paths.
   - Fix: Updated setup/config/game-rules view model flow so mode decisions are applied consistently.
+- Bug: Re-enabling From Scratch always started a new run and cleared progress.
+  - Fix: Added explicit Resume previous run vs Start new run choice when turning From Scratch back on.
+- Bug: Transition actions could partially apply (clear/merge happened even if game-rules save failed).
+  - Fix: Added rollback logic to restore prior unlock-list state when save fails.
+- Bug: Historical bank baselines could accumulate across multiple old runs.
+  - Fix: Keep only the active run baseline and prune old run baseline entries.
 
 ## Biggest Code Areas Changed
 
@@ -42,7 +51,9 @@
   - src/main/java/com.elertan/ItemUnlockService.java
 - Storage readiness and storage wiring:
   - src/main/java/com.elertan/remote/StorageService.java
-  - src/main/java/com.elertan/remote/RemoteStorageService.java
+  - src/main/java/com.elertan/remote/StorageSession.java
+  - src/main/java/com.elertan/remote/firebase/FirebaseStorageSession.java
+  - src/main/java/com.elertan/remote/local/LocalStorageSession.java
   - src/main/java/com.elertan/remote/StorageStateSource.java
 - Setup/config/game rules UI flow:
   - src/main/java/com.elertan/panel/screens/SetupScreenViewModel.java
@@ -61,9 +72,10 @@
 
 ## What needs tested/added from this point
 
-- We need more repetitions of trying to start fresh to make sure the flow is consistent across different profiles/setups. 
-- We need to add messages guiding the player because right now if a player starts with nothing equipped/inventory, they are not explicitly guided to open bank for the first snapshot. 
-- Finalize the plan for if we want to track GP at all and all containers where locked items may reside such as seed bank/death bank/POH/etc. 
+- Run Start New and Resume flows in both local and online storage modes.
+- Simulate save failure paths to confirm rollback restores prior unlock-list state.
+- Confirm old baseline entries are pruned and only current-run baseline is retained.
+- Finalize the plan for whether to track GP and other containers (seed bank/death bank/POH/etc).
 
 ## Scope Snapshot
 
