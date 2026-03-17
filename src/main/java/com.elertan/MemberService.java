@@ -209,6 +209,9 @@ public class MemberService implements BUPluginLifecycle {
 
         log.debug("member service check if we need to add a member...");
 
+        boolean hasOwner = membersMap.values().stream().anyMatch(x -> x.getRole() == MemberRole.Owner);
+        boolean shouldForceOwnerForCurrentAccount = membersMap.size() <= 1 || !hasOwner;
+
         boolean shouldUpdateMember = false;
         boolean shouldBeOwner = false;
         if (membersMap.isEmpty()) {
@@ -216,9 +219,11 @@ public class MemberService implements BUPluginLifecycle {
             shouldBeOwner = true;
         } else if (!membersMap.containsKey(accountHash)) {
             shouldUpdateMember = true;
+            shouldBeOwner = shouldForceOwnerForCurrentAccount;
         } else {
             Member member = membersMap.get(accountHash);
             String memberName = member.getName();
+            MemberRole memberRole = member.getRole();
             if (memberName == null || !memberName.equals(name)) {
                 log.debug(
                     "member service -> name changed from '{}' to '{}' issue-ing member update",
@@ -226,6 +231,17 @@ public class MemberService implements BUPluginLifecycle {
                     name
                 );
                 shouldUpdateMember = true;
+            }
+
+            // Self-heal ownership when there is no owner or we are the only member.
+            if (shouldForceOwnerForCurrentAccount && memberRole != MemberRole.Owner) {
+                log.debug(
+                    "member service -> promoting current account to owner (members: {}, hasOwner: {})",
+                    membersMap.size(),
+                    hasOwner
+                );
+                shouldUpdateMember = true;
+                shouldBeOwner = true;
             }
         }
 

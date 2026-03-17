@@ -641,9 +641,8 @@ public class FromScratchPolicy extends PolicyBase {
         }
         long accountHash = client.getAccountHash();
         String snapshotKey = FromScratchModeUtils.bankBaselineSnapshotKey(accountHash, startedAt);
-        if (fromScratchBankBaselineDataProvider.getQuantity(snapshotKey) != null) {
-            return;
-        }
+        boolean hasSnapshotForCurrentRun =
+            fromScratchBankBaselineDataProvider.getQuantity(snapshotKey) != null;
 
         for (Item item : bankContainer.getItems()) {
             if (item == null || item.getId() <= 1 || item.getQuantity() <= 0) {
@@ -655,24 +654,45 @@ public class FromScratchPolicy extends PolicyBase {
             }
 
             String key = FromScratchModeUtils.bankBaselineKey(accountHash, startedAt, canonicalItemId);
-            fromScratchBankBaselineDataProvider.putIfAbsent(key, item.getQuantity())
+            if (!hasSnapshotForCurrentRun) {
+                // First capture for this run: snapshot the entire bank as baseline.
+                fromScratchBankBaselineDataProvider.putIfAbsent(key, item.getQuantity())
+                    .whenComplete((__, throwable) -> {
+                        if (throwable != null) {
+                            log.error("Failed to persist from-scratch bank baseline for key {}", key, throwable);
+                        }
+                    });
+                continue;
+            }
+
+            // Resume path: keep baseline in sync for items still locked in From Scratch.
+            // This ensures items acquired while From Scratch was disabled become baseline-locked.
+            if (!isItemUnlocked(canonicalItemId)) {
+                Integer existingBaselineQuantity = fromScratchBankBaselineDataProvider.getQuantity(key);
+                if (existingBaselineQuantity == null || existingBaselineQuantity != item.getQuantity()) {
+                    fromScratchBankBaselineDataProvider.put(key, item.getQuantity())
+                        .whenComplete((__, throwable) -> {
+                            if (throwable != null) {
+                                log.error("Failed to refresh from-scratch bank baseline for key {}", key, throwable);
+                            }
+                        });
+                }
+            }
+        }
+
+        if (!hasSnapshotForCurrentRun) {
+            fromScratchBankBaselineDataProvider.putIfAbsent(snapshotKey, 1)
+                .thenCompose(__ -> pruneHistoricalBaselinesKeepingCurrentRunOnly(accountHash, startedAt))
                 .whenComplete((__, throwable) -> {
                     if (throwable != null) {
-                        log.error("Failed to persist from-scratch bank baseline for key {}", key, throwable);
+                        log.error(
+                            "Failed to persist or prune from-scratch bank baseline data for snapshot key {}",
+                            snapshotKey,
+                            throwable
+                        );
                     }
                 });
         }
-        fromScratchBankBaselineDataProvider.putIfAbsent(snapshotKey, 1)
-            .thenCompose(__ -> pruneHistoricalBaselinesKeepingCurrentRunOnly(accountHash, startedAt))
-            .whenComplete((__, throwable) -> {
-                if (throwable != null) {
-                    log.error(
-                        "Failed to persist or prune from-scratch bank baseline data for snapshot key {}",
-                        snapshotKey,
-                        throwable
-                    );
-                }
-            });
     }
 
     private CompletableFuture<Void> pruneHistoricalBaselinesKeepingCurrentRunOnly(

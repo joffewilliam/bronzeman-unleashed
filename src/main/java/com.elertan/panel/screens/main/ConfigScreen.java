@@ -26,7 +26,6 @@ import javax.swing.ScrollPaneConstants;
 public class ConfigScreen extends JPanel implements AutoCloseable {
 
     private final AutoCloseable backButtonEnabledBinding;
-    private final AutoCloseable startFromScratchButtonEnabledBinding;
     private final AutoCloseable updateGameRulesButtonEnabledBinding;
     private final AutoCloseable leaveButtonEnabledBinding;
     private final AutoCloseable errorMessageLabelVisibleBinding;
@@ -126,34 +125,6 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
         add(Box.createVerticalStrut(5), gbc);
         gbc.gridy++;
 
-        JButton startFromScratchButton = new JButton("Start from scratch");
-        startFromScratchButton.setToolTipText(
-            "Enable From Scratch for the group in one step: clears the unlock list and locks bank items until earned in gameplay.");
-        startFromScratchButton.addActionListener(e -> viewModel.startFromScratchClick());
-        startFromScratchButtonEnabledBinding = Bindings.bindEnabled(
-            startFromScratchButton,
-            Property.deriveMany(
-                Arrays.asList(
-                    viewModel.gameRulesEditorViewModelPropsProperty,
-                    viewModel.isSubmittingProperty
-                ),
-                (values) -> {
-                    GameRulesEditorViewModel.Props props = viewModel.gameRulesEditorViewModelPropsProperty.get();
-                    Boolean isSubmitting = viewModel.isSubmittingProperty.get();
-                    if (props == null || isSubmitting == null) {
-                        return false;
-                    }
-                    return !props.isViewOnlyMode() && !isSubmitting
-                        && (props.getGameRules() == null || !props.getGameRules().isFromScratch());
-                }
-            )
-        );
-        add(startFromScratchButton, gbc);
-        gbc.gridy++;
-
-        add(Box.createVerticalStrut(5), gbc);
-        gbc.gridy++;
-
         JButton updateGameRulesButton = new JButton("Update Game Rules");
         updateGameRulesButton.setBorder(BorderFactory.createEmptyBorder(15, 0, 15, 0));
         updateGameRulesButton.addActionListener(e -> viewModel.updateGameRulesClick());
@@ -201,7 +172,6 @@ public class ConfigScreen extends JPanel implements AutoCloseable {
         errorMessageLabelVisibleBinding.close();
         errorMessageLabelTextBinding.close();
         updateGameRulesButtonEnabledBinding.close();
-        startFromScratchButtonEnabledBinding.close();
         backButtonEnabledBinding.close();
     }
 

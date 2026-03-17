@@ -153,7 +153,7 @@ public class ConfigScreenViewModel implements AutoCloseable {
 
         GameRules targetGameRules = gameRules;
         CompletableFuture<Void> preSaveFuture = CompletableFuture.completedFuture(null);
-        Supplier<CompletableFuture<Void>> rollbackPreSaveChanges = CompletableFuture::completedFuture;
+        Supplier<CompletableFuture<Void>> rollbackPreSaveChanges = () -> CompletableFuture.completedFuture(null);
 
         boolean transitionToEnabled = FromScratchModeUtils.isTransitionToEnabled(
             currentGameRules,
@@ -363,13 +363,13 @@ public class ConfigScreenViewModel implements AutoCloseable {
         }
 
         long accountHash = client.getAccountHash();
-        if (accountHash <= 0) {
+        if (accountHash == -1) {
             return null;
         }
 
         ISOOffsetDateTime latest = null;
         for (String key : map.keySet()) {
-            BaselineSnapshotKeyParts keyParts = tryParseSnapshotMarkerKey(key);
+            BaselineKeyParts keyParts = tryParseBaselineKey(key);
             if (keyParts == null || keyParts.accountHash != accountHash) {
                 continue;
             }
@@ -382,30 +382,40 @@ public class ConfigScreenViewModel implements AutoCloseable {
         return latest;
     }
 
-    private BaselineSnapshotKeyParts tryParseSnapshotMarkerKey(String key) {
+    private BaselineKeyParts tryParseBaselineKey(String key) {
         if (key == null) {
             return null;
         }
 
         String[] parts = key.split("\\|", 3);
-        if (parts.length != 3 || !"__snapshot__".equals(parts[2])) {
+        if (parts.length != 3) {
             return null;
+        }
+
+        String keySuffix = parts[2];
+        boolean isSnapshotMarker = "__snapshot__".equals(keySuffix);
+        if (!isSnapshotMarker) {
+            try {
+                Integer.parseInt(keySuffix);
+            } catch (NumberFormatException ex) {
+                return null;
+            }
         }
 
         try {
             long accountHash = Long.parseLong(parts[0]);
             ISOOffsetDateTime startedAt = new ISOOffsetDateTime(OffsetDateTime.parse(parts[1]));
-            return new BaselineSnapshotKeyParts(accountHash, startedAt);
+            return new BaselineKeyParts(accountHash, startedAt);
         } catch (NumberFormatException | DateTimeParseException ex) {
             return null;
         }
     }
 
-    private static class BaselineSnapshotKeyParts {
+    private static class BaselineKeyParts {
         private final long accountHash;
         private final ISOOffsetDateTime startedAt;
 
-        private BaselineSnapshotKeyParts(long accountHash, ISOOffsetDateTime startedAt) {
+        private BaselineKeyParts(long accountHash, ISOOffsetDateTime startedAt) {
             this.accountHash = accountHash;
             this.startedAt = startedAt;
         }
@@ -486,31 +496,49 @@ public class ConfigScreenViewModel implements AutoCloseable {
             return;
         }
 
-        int enableResult = JOptionPane.showConfirmDialog(
-            null,
-            "Enable From Scratch for the entire group?\n"
-                + "This starts a new run, clears the From Scratch unlock list, and applies to all members.",
-            "Confirm Start From Scratch",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.WARNING_MESSAGE
-        );
-        if (enableResult != JOptionPane.OK_OPTION) {
+        EnableFromScratchChoice enableChoice = promptEnableFromScratchChoice();
+        if (enableChoice == EnableFromScratchChoice.Cancel) {
             return;
         }
 
-        GameRules targetGameRules = currentGameRules.toBuilder()
-            .fromScratch(true)
-            .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
-            .build();
+        GameRules targetGameRules;
+        CompletableFuture<Void> preSaveFuture = CompletableFuture.completedFuture(null);
+        Supplier<CompletableFuture<Void>> rollbackPreSaveChanges =
+            () -> CompletableFuture.completedFuture(null);
+
+        if (enableChoice == EnableFromScratchChoice.ResumePreviousRun) {
+            ISOOffsetDateTime resumeStartedAt = findLatestFromScratchStartedAtForCurrentAccount();
+            if (resumeStartedAt == null) {
+                errorMessageProperty.set(
+                    "Could not find a previous From Scratch run to resume. Please choose Start New Run."
+                );
+                return;
+            }
+
+            targetGameRules = currentGameRules.toBuilder()
+                .fromScratch(true)
+                .fromScratchStartedAt(resumeStartedAt)
+                .build();
+        } else {
+            targetGameRules = currentGameRules.toBuilder()
+                .fromScratch(true)
+                .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
+                .build();
+
+            Map<Integer, UnlockedItem> previousFromScratchUnlocks = snapshotUnlockedItemsMap(
+                fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap()
+            );
+            preSaveFuture = fromScratchUnlockedItemsDataProvider.clearAll();
+            rollbackPreSaveChanges =
+                () -> restoreFromScratchUnlockList(previousFromScratchUnlocks);
+        }
 
         final GameRules gameRulesToPersist = targetGameRules;
-        Map<Integer, UnlockedItem> previousFromScratchUnlocks = snapshotUnlockedItemsMap(
-            fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap()
-        );
+        final Supplier<CompletableFuture<Void>> rollbackAction = rollbackPreSaveChanges;
         final AtomicBoolean preSaveApplied = new AtomicBoolean(false);
         isSubmittingProperty.set(true);
 
-        fromScratchUnlockedItemsDataProvider.clearAll()
+        preSaveFuture
             .thenRun(() -> preSaveApplied.set(true))
             .thenCompose(__ -> gameRulesDataProvider.updateGameRules(gameRulesToPersist))
             .whenComplete((__, throwable) -> {
@@ -531,7 +559,7 @@ public class ConfigScreenViewModel implements AutoCloseable {
                     return;
                 }
 
-                restoreFromScratchUnlockList(previousFromScratchUnlocks)
+                rollbackAction.get()
                     .whenComplete((___, rollbackThrowable) -> {
                         if (rollbackThrowable != null) {
                             log.error("Failed to rollback one-click Start From Scratch changes.", rollbackThrowable);
