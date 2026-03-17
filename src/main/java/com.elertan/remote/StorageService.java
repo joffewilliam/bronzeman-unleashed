@@ -221,6 +221,7 @@ public class StorageService implements BUPluginLifecycle, StorageStateSource {
         return CompletableFuture.allOf(readGameRulesFuture, readUnlockedItemsFuture)
             .handle((__, throwable) -> {
                 if (throwable != null) {
+                    log.error("StorageService: local pre-read failed localAccountHash={}", localAccountHash, throwable);
                     closeSessionQuietly(localStorageSession);
                     throw wrapAsCompletionException(unwrap(throwable));
                 }

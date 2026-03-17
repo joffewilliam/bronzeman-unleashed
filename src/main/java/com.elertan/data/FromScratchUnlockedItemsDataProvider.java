@@ -39,6 +39,11 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
                 if (unlockedItemsMap == null) {
                     return;
                 }
+                if (map == null) {
+                    log.debug("from-scratch unlocked items provider -> full update with null map; resetting to empty");
+                    unlockedItemsMap = new ConcurrentHashMap<>();
+                    return;
+                }
                 unlockedItemsMap = new ConcurrentHashMap<>(map);
             }
 
@@ -81,6 +86,10 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
     @Override
     protected void onRemoteStorageReady() {
         keyValueStoragePort = storageService.getFromScratchUnlockedItemsStoragePort();
+        if (keyValueStoragePort == null) {
+            log.error("FromScratchUnlockedItemsDataProvider: from-scratch storage port is null during onRemoteStorageReady");
+            return;
+        }
         keyValueStoragePort.addListener(storagePortListener);
 
         keyValueStoragePort.readAll().whenComplete((map, throwable) -> {
@@ -88,11 +97,12 @@ public class FromScratchUnlockedItemsDataProvider extends AbstractDataProvider {
                 log.error("FromScratchUnlockedItemsDataProvider storageport read all failed", throwable);
                 return;
             }
-            unlockedItemsMap = new ConcurrentHashMap<>(map);
-            log.debug(
-                "FromScratchUnlockedItemsDataProvider initialized with {} items",
-                unlockedItemsMap.size()
-            );
+            if (map == null) {
+                log.debug("FromScratchUnlockedItemsDataProvider: readAll returned null map; initializing empty map");
+                unlockedItemsMap = new ConcurrentHashMap<>();
+            } else {
+                unlockedItemsMap = new ConcurrentHashMap<>(map);
+            }
             setState(State.Ready);
         });
     }

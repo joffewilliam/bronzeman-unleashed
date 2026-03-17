@@ -38,6 +38,11 @@ public class UnlockedItemsDataProvider extends AbstractDataProvider {
                 if (unlockedItemsMap == null) {
                     return;
                 }
+                if (map == null) {
+                    log.debug("unlocked items data provider -> full update with null map; resetting to empty");
+                    unlockedItemsMap = new ConcurrentHashMap<>();
+                    return;
+                }
                 unlockedItemsMap = new ConcurrentHashMap<>(map);
             }
 
@@ -80,6 +85,10 @@ public class UnlockedItemsDataProvider extends AbstractDataProvider {
     @Override
     protected void onRemoteStorageReady() {
         keyValueStoragePort = storageService.getUnlockedItemsStoragePort();
+        if (keyValueStoragePort == null) {
+            log.error("UnlockedItemsDataProvider: unlocked items storage port is null during onRemoteStorageReady");
+            return;
+        }
         keyValueStoragePort.addListener(storagePortListener);
 
         keyValueStoragePort.readAll().whenComplete((map, throwable) -> {
@@ -87,8 +96,12 @@ public class UnlockedItemsDataProvider extends AbstractDataProvider {
                 log.error("UnlockedItemDataProvider storageport read all failed", throwable);
                 return;
             }
-            unlockedItemsMap = new ConcurrentHashMap<>(map);
-            log.debug("UnlockedItemDataProvider initialized with {} items", unlockedItemsMap.size());
+            if (map == null) {
+                log.debug("UnlockedItemsDataProvider: readAll returned null map; initializing empty map");
+                unlockedItemsMap = new ConcurrentHashMap<>();
+            } else {
+                unlockedItemsMap = new ConcurrentHashMap<>(map);
+            }
             setState(State.Ready);
         });
     }

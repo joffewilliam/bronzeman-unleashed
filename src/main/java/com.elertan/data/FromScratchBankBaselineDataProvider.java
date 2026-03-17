@@ -38,6 +38,11 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
                 if (map == null) {
                     return;
                 }
+                if (newMap == null) {
+                    log.debug("from-scratch bank baseline provider -> full update with null map; resetting to empty");
+                    map = new ConcurrentHashMap<>();
+                    return;
+                }
                 map = new ConcurrentHashMap<>(newMap);
             }
 
@@ -63,6 +68,10 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
     @Override
     protected void onRemoteStorageReady() {
         keyValueStoragePort = storageService.getFromScratchBankBaselineStoragePort();
+        if (keyValueStoragePort == null) {
+            log.error("FromScratchBankBaselineDataProvider: baseline storage port is null during onRemoteStorageReady");
+            return;
+        }
         keyValueStoragePort.addListener(storagePortListener);
 
         keyValueStoragePort.readAll().whenComplete((newMap, throwable) -> {
@@ -70,7 +79,12 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
                 log.error("FromScratchBankBaselineDataProvider storageport read all failed", throwable);
                 return;
             }
-            map = new ConcurrentHashMap<>(newMap);
+            if (newMap == null) {
+                log.debug("FromScratchBankBaselineDataProvider: readAll returned null map; initializing empty map");
+                map = new ConcurrentHashMap<>();
+            } else {
+                map = new ConcurrentHashMap<>(newMap);
+            }
             setState(State.Ready);
         });
     }
@@ -150,9 +164,18 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
         }
 
         CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        ConcurrentHashMap<String, FromScratchBankBaselineEntry> localMap = map;
+        KeyValueStoragePort<String, FromScratchBankBaselineEntry> localPort = keyValueStoragePort;
         for (String key : filtered) {
-            map.remove(key);
-            future = future.thenCompose(__ -> keyValueStoragePort.delete(key));
+            if (localMap != null) {
+                localMap.remove(key);
+            }
+            future = future.thenCompose(__ -> {
+                if (localPort == null) {
+                    return CompletableFuture.completedFuture(null);
+                }
+                return localPort.delete(key);
+            });
         }
         return future;
     }

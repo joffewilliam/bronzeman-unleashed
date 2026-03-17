@@ -6,6 +6,7 @@ import com.elertan.models.Member;
 import com.elertan.models.UnlockedItem;
 import com.elertan.panel.screens.main.UnlockedItemsScreenViewModel;
 import com.elertan.ui.Property;
+import com.elertan.utils.Subscription;
 import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -40,6 +41,7 @@ public class MainViewViewModel implements AutoCloseable {
     private final PropertyChangeListener allUnlockedItemsListener = this::allUnlockedItemsListener;
     private final MembersDataProvider.MemberMapListener memberMapListener;
     private final ItemManager itemManager;
+    private Subscription membersStateSubscription;
 
     private MainViewViewModel(
         Property<List<UnlockedItem>> allUnlockedItems,
@@ -75,6 +77,10 @@ public class MainViewViewModel implements AutoCloseable {
         this.itemManager = itemManager;
         membersDataProvider.addMemberMapListener(memberMapListener);
         membersMap = new Property<>(membersDataProvider.getMembersMap());
+
+        membersStateSubscription = membersDataProvider.getState().subscribeImmediate(
+            (newState, oldState) -> membersMap.set(membersDataProvider.getMembersMap())
+        );
 
         membersDataProvider.await(null).whenComplete((__, throwable) -> {
             if (throwable != null) {
@@ -202,6 +208,10 @@ public class MainViewViewModel implements AutoCloseable {
     @Override
     public void close() throws Exception {
         membersDataProvider.removeMemberMapListener(memberMapListener);
+        if (membersStateSubscription != null) {
+            membersStateSubscription.dispose();
+            membersStateSubscription = null;
+        }
         allUnlockedItems.removeListener(allUnlockedItemsListener);
     }
 

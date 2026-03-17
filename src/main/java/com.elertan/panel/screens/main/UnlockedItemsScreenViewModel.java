@@ -32,6 +32,8 @@ public class UnlockedItemsScreenViewModel extends BaseViewModel {
     private final UnlockedItemsDataProvider.UnlockedItemsMapListener normalMapListener;
     private final FromScratchUnlockedItemsDataProvider.UnlockedItemsMapListener fromScratchMapListener;
     private Subscription gameRulesSubscription;
+    private Subscription unlockedItemsStateSubscription;
+    private Subscription fromScratchUnlockedItemsStateSubscription;
     private final PropertyChangeListener sortedByListener = this::sortedByListener;
 
     private UnlockedItemsScreenViewModel(
@@ -72,6 +74,13 @@ public class UnlockedItemsScreenViewModel extends BaseViewModel {
 
         gameRulesSubscription = gameRulesService.getGameRules().subscribe((newRules, oldRules) -> refreshAllUnlockedItems());
 
+        unlockedItemsStateSubscription = unlockedItemsDataProvider.getState().subscribeImmediate(
+            (newState, oldState) -> refreshAllUnlockedItems()
+        );
+        fromScratchUnlockedItemsStateSubscription = fromScratchUnlockedItemsDataProvider.getState().subscribeImmediate(
+            (newState, oldState) -> refreshAllUnlockedItems()
+        );
+
         Duration awaitTimeout = Duration.ofSeconds(30);
         unlockedItemsDataProvider.await(awaitTimeout).whenComplete((__, t1) -> refreshAllUnlockedItems());
         fromScratchUnlockedItemsDataProvider.await(awaitTimeout).whenComplete((__, t2) -> refreshAllUnlockedItems());
@@ -85,7 +94,10 @@ public class UnlockedItemsScreenViewModel extends BaseViewModel {
         Map<Integer, UnlockedItem> map = fromScratch
             ? fromScratchUnlockedItemsDataProvider.getUnlockedItemsMap()
             : unlockedItemsDataProvider.getUnlockedItemsMap();
-        return map == null ? null : new ArrayList<>(map.values());
+        if (map == null) {
+            return null;
+        }
+        return new ArrayList<>(map.values());
     }
 
     private void refreshAllUnlockedItems() {
@@ -100,6 +112,14 @@ public class UnlockedItemsScreenViewModel extends BaseViewModel {
         if (gameRulesSubscription != null) {
             gameRulesSubscription.dispose();
             gameRulesSubscription = null;
+        }
+        if (unlockedItemsStateSubscription != null) {
+            unlockedItemsStateSubscription.dispose();
+            unlockedItemsStateSubscription = null;
+        }
+        if (fromScratchUnlockedItemsStateSubscription != null) {
+            fromScratchUnlockedItemsStateSubscription.dispose();
+            fromScratchUnlockedItemsStateSubscription = null;
         }
     }
 

@@ -41,6 +41,11 @@ public class MembersDataProvider extends AbstractDataProvider {
                 if (membersMap == null) {
                     return;
                 }
+                if (map == null) {
+                    log.debug("members data provider -> full update with null map; resetting to empty");
+                    membersMap = new ConcurrentHashMap<>();
+                    return;
+                }
                 membersMap = new ConcurrentHashMap<>(map);
             }
 
@@ -92,6 +97,10 @@ public class MembersDataProvider extends AbstractDataProvider {
     @Override
     protected void onRemoteStorageReady() {
         keyValueStoragePort = storageService.getMembersStoragePort();
+        if (keyValueStoragePort == null) {
+            log.error("MembersDataProvider: members storage port is null during onRemoteStorageReady");
+            return;
+        }
         keyValueStoragePort.addListener(storagePortListener);
 
         keyValueStoragePort.readAll().whenComplete((map, throwable) -> {
@@ -99,8 +108,12 @@ public class MembersDataProvider extends AbstractDataProvider {
                 log.error("MembersDataProvider storageport read all failed", throwable);
                 return;
             }
-            membersMap = new ConcurrentHashMap<>(map);
-            log.debug("MembersDataProvider initialized with {} members", membersMap.size());
+            if (map == null) {
+                log.debug("MembersDataProvider: readAll returned null map; initializing empty map");
+                membersMap = new ConcurrentHashMap<>();
+            } else {
+                membersMap = new ConcurrentHashMap<>(map);
+            }
             setState(State.Ready);
         });
     }
