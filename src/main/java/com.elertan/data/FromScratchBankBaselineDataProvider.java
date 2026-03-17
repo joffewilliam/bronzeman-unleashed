@@ -6,7 +6,9 @@ import com.elertan.remote.RemoteStorageService;
 import com.elertan.remote.StorageStateSource;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -123,5 +125,35 @@ public class FromScratchBankBaselineDataProvider extends AbstractDataProvider {
         FromScratchBankBaselineEntry value = new FromScratchBankBaselineEntry(quantity);
         map.put(key, value);
         return keyValueStoragePort.update(key, value);
+    }
+
+    public CompletableFuture<Void> deleteKeys(List<String> keys) {
+        if (getState().get() != State.Ready) {
+            CompletableFuture<Void> future = new CompletableFuture<>();
+            future.completeExceptionally(new IllegalStateException("State is not ready"));
+            return future;
+        }
+        if (keys == null || keys.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // Remove duplicates and null/empty keys before issuing deletes.
+        List<String> filtered = new ArrayList<>();
+        for (String key : keys) {
+            if (key == null || key.isEmpty() || filtered.contains(key)) {
+                continue;
+            }
+            filtered.add(key);
+        }
+        if (filtered.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        CompletableFuture<Void> future = CompletableFuture.completedFuture(null);
+        for (String key : filtered) {
+            map.remove(key);
+            future = future.thenCompose(__ -> keyValueStoragePort.delete(key));
+        }
+        return future;
     }
 }

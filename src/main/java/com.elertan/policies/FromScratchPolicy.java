@@ -16,9 +16,12 @@ import com.google.inject.Singleton;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -660,11 +663,79 @@ public class FromScratchPolicy extends PolicyBase {
                 });
         }
         fromScratchBankBaselineDataProvider.putIfAbsent(snapshotKey, 1)
+            .thenCompose(__ -> pruneHistoricalBaselinesKeepingCurrentRunOnly(accountHash, startedAt))
             .whenComplete((__, throwable) -> {
                 if (throwable != null) {
-                    log.error("Failed to persist from-scratch bank baseline snapshot key {}", snapshotKey, throwable);
+                    log.error(
+                        "Failed to persist or prune from-scratch bank baseline data for snapshot key {}",
+                        snapshotKey,
+                        throwable
+                    );
                 }
             });
+    }
+
+    private CompletableFuture<Void> pruneHistoricalBaselinesKeepingCurrentRunOnly(
+        long accountHash,
+        ISOOffsetDateTime currentStartedAt
+    ) {
+        Map<String, com.elertan.models.FromScratchBankBaselineEntry> baselineMap =
+            fromScratchBankBaselineDataProvider.getMap();
+        if (baselineMap == null || baselineMap.isEmpty() || currentStartedAt == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        String currentStartedAtString = currentStartedAt.toString();
+
+        List<String> keysToDelete = new ArrayList<>();
+        for (String key : baselineMap.keySet()) {
+            BaselineKeyParts parts = tryParseBaselineKeyParts(key);
+            if (parts == null || parts.accountHash != accountHash) {
+                continue;
+            }
+
+            if (!currentStartedAtString.equals(parts.startedAtRaw)) {
+                keysToDelete.add(key);
+            }
+        }
+
+        if (keysToDelete.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return fromScratchBankBaselineDataProvider.deleteKeys(keysToDelete)
+            .whenComplete((__, throwable) -> {
+                if (throwable == null) {
+                    log.info(
+                        "From Scratch: pruned {} old baseline entries (kept current run only)",
+                        keysToDelete.size()
+                    );
+                }
+            });
+    }
+
+    private BaselineKeyParts tryParseBaselineKeyParts(String key) {
+        if (key == null) {
+            return null;
+        }
+
+        String[] parts = key.split("\\|", 3);
+        if (parts.length != 3) {
+            return null;
+        }
+
+        try {
+            long parsedAccountHash = Long.parseLong(parts[0]);
+            return new BaselineKeyParts(parsedAccountHash, parts[1]);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    @AllArgsConstructor
+    private static class BaselineKeyParts {
+        private final long accountHash;
+        private final String startedAtRaw;
     }
 
     private int getCurrentBankQuantity(int itemId) {
