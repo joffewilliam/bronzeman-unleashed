@@ -5,6 +5,7 @@ import com.elertan.FromScratchModeUtils;
 import com.elertan.GameRulesService;
 import com.elertan.MemberService;
 import com.elertan.data.FromScratchUnlockedItemsDataProvider;
+import com.elertan.data.FromScratchBankBaselineDataProvider;
 import com.elertan.data.GameRulesDataProvider;
 import com.elertan.data.UnlockedItemsDataProvider;
 import com.elertan.data.MembersDataProvider;
@@ -21,6 +22,7 @@ import com.google.inject.ImplementedBy;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
@@ -35,12 +37,14 @@ public class ConfigScreenViewModel implements AutoCloseable {
     public final Property<Boolean> isSubmittingProperty = new Property<>(false);
     public final Property<String> errorMessageProperty = new Property<>(null);
 
+    private final Client client;
     private final AccountConfigurationService accountConfigurationService;
     private final MemberService memberService;
     private final GameRulesService gameRulesService;
     private final GameRulesDataProvider gameRulesDataProvider;
     private final UnlockedItemsDataProvider unlockedItemsDataProvider;
     private final FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
+    private final FromScratchBankBaselineDataProvider fromScratchBankBaselineDataProvider;
     private final MembersDataProvider membersDataProvider;
     private final Runnable navigateToMainScreen;
     private final MembersDataProvider.MemberMapListener memberMapListener;
@@ -54,15 +58,18 @@ public class ConfigScreenViewModel implements AutoCloseable {
         GameRulesDataProvider gameRulesDataProvider,
         UnlockedItemsDataProvider unlockedItemsDataProvider,
         FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider,
+        FromScratchBankBaselineDataProvider fromScratchBankBaselineDataProvider,
         MembersDataProvider membersDataProvider,
         MemberService memberService,
         Runnable navigateToMainScreen) {
+        this.client = client;
         this.accountConfigurationService = accountConfigurationService;
         this.memberService = memberService;
         this.gameRulesService = gameRulesService;
         this.gameRulesDataProvider = gameRulesDataProvider;
         this.unlockedItemsDataProvider = unlockedItemsDataProvider;
         this.fromScratchUnlockedItemsDataProvider = fromScratchUnlockedItemsDataProvider;
+        this.fromScratchBankBaselineDataProvider = fromScratchBankBaselineDataProvider;
         this.membersDataProvider = membersDataProvider;
         this.navigateToMainScreen = navigateToMainScreen;
         propsSupplier = () -> {
@@ -155,25 +162,33 @@ public class ConfigScreenViewModel implements AutoCloseable {
         );
 
         if (transitionToEnabled) {
-            // Only when turning From Scratch ON do we clear the list (new run).
-            int enableResult = JOptionPane.showConfirmDialog(
-                null,
-                "Enable From Scratch for the entire group?\n"
-                    + "This starts a new run, clears the From Scratch unlock list, and applies to all members.",
-                "Confirm Start From Scratch",
-                JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.WARNING_MESSAGE
-            );
-            if (enableResult != JOptionPane.OK_OPTION) {
+            EnableFromScratchChoice enableChoice = promptEnableFromScratchChoice();
+            if (enableChoice == EnableFromScratchChoice.Cancel) {
                 return;
             }
 
-            targetGameRules = targetGameRules.toBuilder()
-                .fromScratch(true)
-                .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
-                .build();
+            if (enableChoice == EnableFromScratchChoice.ResumePreviousRun) {
+                ISOOffsetDateTime resumeStartedAt = findLatestFromScratchStartedAtForCurrentAccount();
+                if (resumeStartedAt == null) {
+                    errorMessageProperty.set(
+                        "Could not find a previous From Scratch run to resume. Please choose Start New Run."
+                    );
+                    return;
+                }
 
-            preSaveFuture = fromScratchUnlockedItemsDataProvider.clearAll();
+                targetGameRules = targetGameRules.toBuilder()
+                    .fromScratch(true)
+                    .fromScratchStartedAt(resumeStartedAt)
+                    .build();
+            } else {
+                // Start New Run: clear From Scratch unlock list and create a new run timestamp.
+                targetGameRules = targetGameRules.toBuilder()
+                    .fromScratch(true)
+                    .fromScratchStartedAt(new ISOOffsetDateTime(OffsetDateTime.now()))
+                    .build();
+
+                preSaveFuture = fromScratchUnlockedItemsDataProvider.clearAll();
+            }
         } else if (transitionToDisabled) {
             StopFromScratchChoice stopChoice = promptStopFromScratchChoice();
             if (stopChoice == StopFromScratchChoice.Cancel) {
@@ -269,6 +284,106 @@ public class ConfigScreenViewModel implements AutoCloseable {
             return StopFromScratchChoice.StopAndMerge;
         }
         return StopFromScratchChoice.Cancel;
+    }
+
+    private EnableFromScratchChoice promptEnableFromScratchChoice() {
+        ISOOffsetDateTime latestRunStartedAt = findLatestFromScratchStartedAtForCurrentAccount();
+        if (latestRunStartedAt == null) {
+            int enableResult = JOptionPane.showConfirmDialog(
+                null,
+                "Enable From Scratch for the entire group?\n"
+                    + "This starts a new run, clears the From Scratch unlock list, and applies to all members.",
+                "Confirm Start From Scratch",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.WARNING_MESSAGE
+            );
+            return enableResult == JOptionPane.OK_OPTION
+                ? EnableFromScratchChoice.StartNewRun
+                : EnableFromScratchChoice.Cancel;
+        }
+
+        Object[] options = new Object[] {
+            "Cancel",
+            "Resume previous From Scratch run",
+            "Start new From Scratch run"
+        };
+
+        int result = JOptionPane.showOptionDialog(
+            null,
+            "Enable From Scratch for the group.\n\n"
+                + "- Resume: keep your previous From Scratch unlock list and continue that run.\n"
+                + "- Start new: clear the From Scratch unlock list and begin a fresh run.",
+            "Enable From Scratch",
+            JOptionPane.DEFAULT_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+            null,
+            options,
+            options[0]
+        );
+
+        if (result == 1) {
+            return EnableFromScratchChoice.ResumePreviousRun;
+        }
+        if (result == 2) {
+            return EnableFromScratchChoice.StartNewRun;
+        }
+        return EnableFromScratchChoice.Cancel;
+    }
+
+    private ISOOffsetDateTime findLatestFromScratchStartedAtForCurrentAccount() {
+        Map<String, com.elertan.models.FromScratchBankBaselineEntry> map =
+            fromScratchBankBaselineDataProvider.getMap();
+        if (map == null || map.isEmpty()) {
+            return null;
+        }
+
+        long accountHash = client.getAccountHash();
+        if (accountHash <= 0) {
+            return null;
+        }
+
+        ISOOffsetDateTime latest = null;
+        for (String key : map.keySet()) {
+            BaselineSnapshotKeyParts keyParts = tryParseSnapshotMarkerKey(key);
+            if (keyParts == null || keyParts.accountHash != accountHash) {
+                continue;
+            }
+
+            if (latest == null || keyParts.startedAt.getValue().isAfter(latest.getValue())) {
+                latest = keyParts.startedAt;
+            }
+        }
+
+        return latest;
+    }
+
+    private BaselineSnapshotKeyParts tryParseSnapshotMarkerKey(String key) {
+        if (key == null) {
+            return null;
+        }
+
+        String[] parts = key.split("\\|", 3);
+        if (parts.length != 3 || !"__snapshot__".equals(parts[2])) {
+            return null;
+        }
+
+        try {
+            long accountHash = Long.parseLong(parts[0]);
+            ISOOffsetDateTime startedAt = new ISOOffsetDateTime(OffsetDateTime.parse(parts[1]));
+            return new BaselineSnapshotKeyParts(accountHash, startedAt);
+        } catch (NumberFormatException | DateTimeParseException ex) {
+            return null;
+        }
+    }
+
+    private static class BaselineSnapshotKeyParts {
+        private final long accountHash;
+        private final ISOOffsetDateTime startedAt;
+
+        private BaselineSnapshotKeyParts(long accountHash, ISOOffsetDateTime startedAt) {
+            this.accountHash = accountHash;
+            this.startedAt = startedAt;
+        }
     }
 
     private CompletableFuture<Void> mergeFromScratchUnlocksIntoMainList() {
@@ -457,6 +572,8 @@ public class ConfigScreenViewModel implements AutoCloseable {
         @Inject
         private FromScratchUnlockedItemsDataProvider fromScratchUnlockedItemsDataProvider;
         @Inject
+        private FromScratchBankBaselineDataProvider fromScratchBankBaselineDataProvider;
+        @Inject
         private MembersDataProvider membersDataProvider;
         @Inject
         private MemberService memberService;
@@ -470,11 +587,18 @@ public class ConfigScreenViewModel implements AutoCloseable {
                 gameRulesDataProvider,
                 unlockedItemsDataProvider,
                 fromScratchUnlockedItemsDataProvider,
+                fromScratchBankBaselineDataProvider,
                 membersDataProvider,
                 memberService,
                 navigateToMainScreen
             );
         }
+    }
+
+    private enum EnableFromScratchChoice {
+        Cancel,
+        StartNewRun,
+        ResumePreviousRun
     }
 
     private enum StopFromScratchChoice {
