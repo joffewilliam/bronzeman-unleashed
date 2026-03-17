@@ -42,6 +42,16 @@
   - Fix: Added rollback logic to restore prior unlock-list state when save fails.
 - Bug: Historical bank baselines could accumulate across multiple old runs.
   - Fix: Keep only the active run baseline and prune old run baseline entries.
+- Bug: Some groups showed owner as view-only ("only owner can modify") even for solo/actual owner accounts.
+  - Fix: Added owner-role reconciliation in member handling so owner is self-healed when group state is inconsistent.
+- Bug: Resume detection could fail for existing runs due to strict account-hash/key parsing checks.
+  - Fix: Relaxed account-hash validity handling and broadened baseline-key parsing in config flow.
+- Bug: One-click "Start from scratch" path bypassed Resume/New choice and always forced a new run.
+  - Fix: Routed one-click start through the same Resume vs Start New decision flow as the main toggle path.
+- Bug: Unlocked Items screen could remain stuck on LOADING after storage mode/session switches until another unlock event occurred.
+  - Fix: Subscribed view-model refresh logic to provider state transitions (NotReady -> Ready) and dependency updates.
+- Bug: Storage full-update/readAll payloads can be null (for empty/reset nodes), causing null-map races and load instability.
+  - Fix: Added null-safe map initialization in providers and hardened baseline delete sequencing against session/port churn.
 
 ## Biggest Code Areas Changed
 
@@ -70,12 +80,16 @@
   - FromScratchModeUtils
   - FromScratchModeUtilsTest
 
-## What needs tested/added from this point
+## Status Update (2026-03-17)
 
-- Run Start New and Resume flows in both local and online storage modes.
-- Simulate save failure paths to confirm rollback restores prior unlock-list state.
-- Confirm old baseline entries are pruned and only current-run baseline is retained.
-- Finalize the plan for whether to track GP and other containers (seed bank/death bank/POH/etc).
+Completed:
+- Start New and Resume flows are now working through setup/config paths, including local/online storage handling.
+- Save-failure rollback protection is in place so unlock-list transitions are restored when game-rules save fails.
+- Baseline pruning is implemented so historical run entries are removed and only active-run baseline remains.
+- Loading-screen race during storage/session switches was fixed by refreshing on provider state transitions and hardening null readAll map handling.
+
+Still open:
+- Finalize product decision on whether to track GP and other containers (seed bank/death bank/POH/etc).
 
 ## Scope Snapshot
 
