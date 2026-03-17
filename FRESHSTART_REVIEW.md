@@ -89,10 +89,37 @@ Completed:
 - Loading-screen race during storage/session switches was fixed by refreshing on provider state transitions and hardening null readAll map handling.
 
 Still open:
+- Withdraw All is currently blocked, but first attempts can sometimes pass through. Need to intercept withdraw all and withdraw all -1, plus the withdraw all button.
+  Ideally, this would read the quantity of the hovered item and ALL would become quantity of that slot. 
 - Finalize product decision on whether to track GP and other containers (seed bank/death bank/POH/etc).
 
-## Scope Snapshot
+## Feature Snapshot
 
-- Around 30 files changed.
-- Mostly feature additions plus UI/storage wiring updates.
-- Squashed into one commit so review focuses on final behavior.
+The ability to switch back and forth between BU and Freshstart mode
+
+<img width="663" height="203" alt="image" src="https://github.com/user-attachments/assets/150dff47-e99d-4a25-a2c2-4105cc065bf4" />
+
+Startup game messages
+
+<img width="1074" height="292" alt="image" src="https://github.com/user-attachments/assets/103f0efe-2867-4670-9cf6-924a18181fb1" />
+
+A bank with 0 unlocks
+
+<img width="825" height="293" alt="image" src="https://github.com/user-attachments/assets/30351ff8-929f-435a-91e9-561b8f66c7ff" />
+
+A bank with 300 Aether runes unlocked
+
+<img width="808" height="369" alt="image" src="https://github.com/user-attachments/assets/614e74bb-d114-4d0c-a94f-c8165d53f9e4" />
+
+Empty withdraw-x screen
+
+<img width="1076" height="290" alt="image" src="https://github.com/user-attachments/assets/3009bc48-d527-4684-a5ab-27c4d0da6da7" />
+
+Clamped withdraw-x screen. I typed 600 and it automatically clamped to 300.
+
+<img width="1075" height="296" alt="image" src="https://github.com/user-attachments/assets/1a8bd777-554b-44de-b739-7c8baa85130e" />
+
+
+
+
+
