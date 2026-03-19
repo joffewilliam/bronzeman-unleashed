@@ -291,9 +291,9 @@ public final class RelatedItemsRegistry {
     // Crafting levels are used for chat messages (e.g. "Recipe unlock: X (Crafting 93)").
 
     private static void registerRecipes(Set<RecipeRule> recipes, Map<Integer, Integer> craftingLevels) {
-        // Amulet of torture + Araxyte fang (or test: maple longbow u) → Amulet of rancour (Crafting 93)
+        // Araxyte fang + Amulet of torture → Amulet of rancour (Crafting 93)
         recipes.add(new RecipeRule(
-            IntStream.of(ItemID.ZENYTE_AMULET_ENCHANTED, ItemID.UNSTRUNG_MAPLE_LONGBOW)
+            IntStream.of(ItemID.ARAXYTE_FANG, ItemID.ZENYTE_AMULET_ENCHANTED)
                 .boxed()
                 .collect(Collectors.toUnmodifiableSet()),
             Collections.singleton(ItemID.AMULET_OF_RANCOUR)

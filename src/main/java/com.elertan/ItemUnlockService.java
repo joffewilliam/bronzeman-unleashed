@@ -590,8 +590,9 @@ public class ItemUnlockService implements BUPluginLifecycle {
                 Set<Integer> ownedIdsForRecipes = new HashSet<>(currentUnlockedItems.keySet());
                 ownedIdsForRecipes.addAll(equivalentItemIds);
 
-                Set<Integer> recipeResultIds =
-                    relatedItemsRegistry.getRecipeResultItemIds(ownedIdsForRecipes);
+                Set<Integer> recipeResultIds = gameRules.isEnableRecipeDerivedUnlocks()
+                    ? relatedItemsRegistry.getRecipeResultItemIds(ownedIdsForRecipes)
+                    : Collections.emptySet();
 
                 // Create additional unlocks for equivalent and recipe result IDs that are not yet
                 // unlocked. Keep the same acquiredAt/acquiredBy metadata so they look like a single
@@ -636,6 +637,11 @@ public class ItemUnlockService implements BUPluginLifecycle {
                         continue;
                     }
                     if (currentUnlockedItems.containsKey(resultId)) {
+                        continue;
+                    }
+
+                    if (gameRules.isOnlyForTradeableItems()
+                        && !client.getItemDefinition(resultId).isTradeable()) {
                         continue;
                     }
 
@@ -891,33 +897,41 @@ public class ItemUnlockService implements BUPluginLifecycle {
             }
 
             // After equivalence expansion, apply recipe rules once over the expanded ID set.
-            Set<Integer> ownedIds = new HashSet<>(expandedMap.keySet());
-            Set<Integer> recipeResults = relatedItemsRegistry.getRecipeResultItemIds(ownedIds);
-            for (int resultId : recipeResults) {
-                if (expandedMap.containsKey(resultId)) {
-                    continue;
-                }
+            GameRules rules = gameRulesService.getGameRules().get();
+            if (rules != null && rules.isEnableRecipeDerivedUnlocks()) {
+                Set<Integer> ownedIds = new HashSet<>(expandedMap.keySet());
+                Set<Integer> recipeResults = relatedItemsRegistry.getRecipeResultItemIds(ownedIds);
+                for (int resultId : recipeResults) {
+                    if (expandedMap.containsKey(resultId)) {
+                        continue;
+                    }
 
-                if (!meetsSkillFeatureRequirements(resultId)) {
-                    log.debug("Skipping backfill recipe unlock for item {}: skill requirements not met", resultId);
-                    continue;
-                }
+                    if (rules.isOnlyForTradeableItems()
+                        && !client.getItemDefinition(resultId).isTradeable()) {
+                        continue;
+                    }
 
-                ItemComposition resultComposition = client.getItemDefinition(resultId);
-                String resultName = resultComposition.getName();
-                Map<String, Integer> skillReqs = buildSkillRequirementMap(resultId);
-                UnlockedItem template = map.values().iterator().next();
-                UnlockedItem resultUnlockedItem = new UnlockedItem(
-                    resultId,
-                    resultName,
-                    template.getAcquiredByAccountHash(),
-                    template.getAcquiredAt(),
-                    template.getDroppedByNPCId(),
-                    true,
-                    null,
-                    skillReqs
-                );
-                expandedMap.put(resultId, resultUnlockedItem);
+                    if (!meetsSkillFeatureRequirements(resultId)) {
+                        log.debug("Skipping backfill recipe unlock for item {}: skill requirements not met", resultId);
+                        continue;
+                    }
+
+                    ItemComposition resultComposition = client.getItemDefinition(resultId);
+                    String resultName = resultComposition.getName();
+                    Map<String, Integer> skillReqs = buildSkillRequirementMap(resultId);
+                    UnlockedItem template = map.values().iterator().next();
+                    UnlockedItem resultUnlockedItem = new UnlockedItem(
+                        resultId,
+                        resultName,
+                        template.getAcquiredByAccountHash(),
+                        template.getAcquiredAt(),
+                        template.getDroppedByNPCId(),
+                        true,
+                        null,
+                        skillReqs
+                    );
+                    expandedMap.put(resultId, resultUnlockedItem);
+                }
             }
 
             int unlockedItemsSize = expandedMap.size();
