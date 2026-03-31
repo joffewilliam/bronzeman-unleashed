@@ -350,8 +350,8 @@ public class GameRulesEditor extends JPanel implements AutoCloseable {
         );
         panel.add(
             createCheckboxInput(
-                "Consumables only",
-                "Whether to prevent buying wearable/equippable gear on the Grand Exchange",
+                "Allow consumables to be bought on GE",
+                "Allows consumables to be bought on the Grand Exchange while still blocking all equipables",
                 preventGrandExchangeGearBuyOffersCheckbox
             ), gbc
         );

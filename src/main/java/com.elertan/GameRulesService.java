@@ -133,7 +133,7 @@ public class GameRulesService implements BUPluginLifecycle {
         if (oldGameRules.isPreventGrandExchangeGearBuyOffers()
             != newGameRules.isPreventGrandExchangeGearBuyOffers()) {
             differences.put(
-                "Grand Exchange consumables only",
+                "Allow consumables to be bought on GE",
                 booleanFormatter.apply(newGameRules.isPreventGrandExchangeGearBuyOffers())
             );
         }
