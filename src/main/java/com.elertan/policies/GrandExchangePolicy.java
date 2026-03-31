@@ -37,6 +37,12 @@ public class GrandExchangePolicy extends PolicyBase {
 
     private boolean geInterfaceOpen;
 
+    private enum GeBuyPolicyMode {
+        OFF,
+        UNLOCKED_ITEMS_ONLY,
+        ALLOW_SUPPLIES_BEFORE_UNLOCK
+    }
+
     @Inject
     public GrandExchangePolicy(
         AccountConfigurationService accountConfigurationService,
@@ -106,21 +112,20 @@ public class GrandExchangePolicy extends PolicyBase {
         }
 
         PolicyContext context = createContext();
-        boolean preventLocked = context.shouldApplyForRules(GameRules::isPreventGrandExchangeBuyOffers);
-        boolean preventGear = context.shouldApplyForRules(GameRules::isPreventGrandExchangeGearBuyOffers);
-        if (!preventLocked && !preventGear) {
+        GeBuyPolicyMode mode = resolveBuyPolicyMode(context);
+        if (mode == GeBuyPolicyMode.OFF) {
             return;
         }
 
         try {
-            if (preventLocked && !itemUnlockService.hasUnlockedItem(itemId)) {
+            RestrictionReason restrictionReason = getRestrictionReason(itemId, mode);
+            if (restrictionReason != RestrictionReason.NONE) {
                 event.consume();
-                buChatService.sendRestrictionMessage(MessageKey.GE_BUY_LOCKED_ITEM_RESTRICTION);
-                return;
-            }
-            if (preventGear && isGearItem(itemId)) {
-                event.consume();
-                buChatService.sendRestrictionMessage(MessageKey.GE_BUY_GEAR_RESTRICTION);
+                if (restrictionReason == RestrictionReason.LOCKED_ITEM) {
+                    buChatService.sendRestrictionMessage(MessageKey.GE_BUY_LOCKED_ITEM_RESTRICTION);
+                } else {
+                    buChatService.sendRestrictionMessage(MessageKey.GE_BUY_GEAR_RESTRICTION);
+                }
             }
         } catch (Exception e) {
             log.warn("Failed GE buy restriction check for item {}", itemId, e);
@@ -129,9 +134,8 @@ public class GrandExchangePolicy extends PolicyBase {
 
     private void onSearchBuild() {
         PolicyContext context = createContext();
-        boolean preventLocked = context.shouldApplyForRules(GameRules::isPreventGrandExchangeBuyOffers);
-        boolean preventGear = context.shouldApplyForRules(GameRules::isPreventGrandExchangeGearBuyOffers);
-        if (!preventLocked && !preventGear) {
+        GeBuyPolicyMode mode = resolveBuyPolicyMode(context);
+        if (mode == GeBuyPolicyMode.OFF) {
             return;
         }
 
@@ -149,34 +153,73 @@ public class GrandExchangePolicy extends PolicyBase {
         for (int i = 0; i < children.length; i += 3) {
             final Widget itemWidget = children[i + 2];
             final int itemId = itemWidget.getItemId();
-            boolean block = false;
-
-            if (preventLocked) {
-                try {
-                    block = !itemUnlockService.hasUnlockedItem(itemId);
-                } catch (Exception e) {
-                    log.error(
-                        "Failed to check hasUnlockedItem({}) in onGrandExchangeSearchBuild",
-                        itemId,
-                        e
-                    );
-                    return;
+            try {
+                RestrictionReason restrictionReason = getRestrictionReason(itemId, mode);
+                if (restrictionReason == RestrictionReason.NONE) {
+                    continue;
                 }
-            }
-
-            if (!block && preventGear && isGearItem(itemId)) {
-                block = true;
-            }
-
-            if (block) {
                 // Make not clickable
                 children[i].setHidden(true);
 
                 // Make transparent to indicate not clickable
                 children[i + 1].setOpacity(120);
                 children[i + 2].setOpacity(120);
+            } catch (Exception e) {
+                log.error(
+                    "Failed to evaluate GE restriction for item {} in onGrandExchangeSearchBuild",
+                    itemId,
+                    e
+                );
+                return;
             }
         }
+    }
+
+    private GeBuyPolicyMode resolveBuyPolicyMode(PolicyContext context) {
+        if (context.isMustEnforceStrictPolicies()) {
+            return GeBuyPolicyMode.UNLOCKED_ITEMS_ONLY;
+        }
+
+        GameRules gameRules = context.getGameRules();
+        if (gameRules == null) {
+            return GeBuyPolicyMode.OFF;
+        }
+
+        if (!gameRules.isPreventGrandExchangeBuyOffers()) {
+            return GeBuyPolicyMode.OFF;
+        }
+
+        if (gameRules.isPreventGrandExchangeGearBuyOffers()) {
+            return GeBuyPolicyMode.ALLOW_SUPPLIES_BEFORE_UNLOCK;
+        }
+
+        return GeBuyPolicyMode.UNLOCKED_ITEMS_ONLY;
+    }
+
+    private RestrictionReason getRestrictionReason(int itemId, GeBuyPolicyMode mode) throws Exception {
+        switch (mode) {
+            case OFF:
+                return RestrictionReason.NONE;
+            case UNLOCKED_ITEMS_ONLY:
+                return itemUnlockService.hasUnlockedItem(itemId)
+                    ? RestrictionReason.NONE
+                    : RestrictionReason.LOCKED_ITEM;
+            case ALLOW_SUPPLIES_BEFORE_UNLOCK:
+                if (!isGearItem(itemId)) {
+                    return RestrictionReason.NONE;
+                }
+                return itemUnlockService.hasUnlockedItem(itemId)
+                    ? RestrictionReason.NONE
+                    : RestrictionReason.GEAR_REQUIRES_UNLOCK;
+            default:
+                return RestrictionReason.NONE;
+        }
+    }
+
+    private enum RestrictionReason {
+        NONE,
+        LOCKED_ITEM,
+        GEAR_REQUIRES_UNLOCK
     }
 
     private boolean isGearItem(int itemId) {
