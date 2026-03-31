@@ -1,10 +1,12 @@
 package com.elertan.policies;
 
 import com.elertan.AccountConfigurationService;
+import com.elertan.BUChatService;
 import com.elertan.GameRulesService;
 import com.elertan.ItemUnlockService;
 import com.elertan.PolicyService;
 import com.elertan.WorldTypeService;
+import com.elertan.chat.ChatMessageProvider.MessageKey;
 import com.elertan.models.GameRules;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -12,7 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.ItemComposition;
+import net.runelite.api.MenuAction;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
@@ -28,6 +32,8 @@ public class GrandExchangePolicy extends PolicyBase {
     private Client client;
     @Inject
     private ItemUnlockService itemUnlockService;
+    @Inject
+    private BUChatService buChatService;
 
     private boolean geInterfaceOpen;
 
@@ -76,6 +82,48 @@ public class GrandExchangePolicy extends PolicyBase {
         int scriptId = event.getScriptId();
         if (scriptId == GE_SEARCH_BUILD_SCRIPT_ID) {
             onSearchBuild();
+        }
+    }
+
+    public void onMenuOptionClicked(MenuOptionClicked event) {
+        if (!accountConfigurationService.isBronzemanEnabled()) {
+            return;
+        }
+
+        MenuAction action = event.getMenuAction();
+        if (action != MenuAction.CC_OP && action != MenuAction.CC_OP_LOW_PRIORITY) {
+            return;
+        }
+
+        String option = event.getMenuOption();
+        if (option == null || !option.startsWith("Buy")) {
+            return;
+        }
+
+        int itemId = event.getId();
+        if (itemId <= 0) {
+            return;
+        }
+
+        PolicyContext context = createContext();
+        boolean preventLocked = context.shouldApplyForRules(GameRules::isPreventGrandExchangeBuyOffers);
+        boolean preventGear = context.shouldApplyForRules(GameRules::isPreventGrandExchangeGearBuyOffers);
+        if (!preventLocked && !preventGear) {
+            return;
+        }
+
+        try {
+            if (preventLocked && !itemUnlockService.hasUnlockedItem(itemId)) {
+                event.consume();
+                buChatService.sendRestrictionMessage(MessageKey.GE_BUY_LOCKED_ITEM_RESTRICTION);
+                return;
+            }
+            if (preventGear && isGearItem(itemId)) {
+                event.consume();
+                buChatService.sendRestrictionMessage(MessageKey.GE_BUY_GEAR_RESTRICTION);
+            }
+        } catch (Exception e) {
+            log.warn("Failed GE buy restriction check for item {}", itemId, e);
         }
     }
 

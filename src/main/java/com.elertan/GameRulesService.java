@@ -124,18 +124,10 @@ public class GameRulesService implements BUPluginLifecycle {
             );
         }
         if (oldGameRules.isPreventGrandExchangeBuyOffers()
-            != newGameRules.isPreventGrandExchangeBuyOffers()) {
-            differences.put(
-                "Prevent Grand Exchange buy offers",
-                booleanFormatter.apply(newGameRules.isPreventGrandExchangeBuyOffers())
-            );
-        }
-        if (oldGameRules.isPreventGrandExchangeGearBuyOffers()
+            != newGameRules.isPreventGrandExchangeBuyOffers()
+            || oldGameRules.isPreventGrandExchangeGearBuyOffers()
             != newGameRules.isPreventGrandExchangeGearBuyOffers()) {
-            differences.put(
-                "Allow consumables to be bought on GE",
-                booleanFormatter.apply(newGameRules.isPreventGrandExchangeGearBuyOffers())
-            );
+            differences.put("Grand Exchange buy policy", formatGrandExchangePolicy(newGameRules));
         }
         if (oldGameRules.isPreventTradeLockedItems() != newGameRules.isPreventTradeLockedItems()) {
             differences.put(
@@ -194,5 +186,17 @@ public class GameRulesService implements BUPluginLifecycle {
             differences.put("Party password", "*hidden see config*");
         }
         return differences;
+    }
+
+    private String formatGrandExchangePolicy(GameRules gameRules) {
+        boolean preventLocked = gameRules.isPreventGrandExchangeBuyOffers();
+        boolean preventGear = gameRules.isPreventGrandExchangeGearBuyOffers();
+        if (!preventLocked && !preventGear) {
+            return "Off";
+        }
+        if (preventLocked && !preventGear) {
+            return "Unlocked items only";
+        }
+        return "Allow supplies before unlock";
     }
 }

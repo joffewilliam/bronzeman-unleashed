@@ -17,6 +17,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFormattedTextField;
 import javax.swing.JLabel;
@@ -321,38 +322,24 @@ public class GameRulesEditor extends JPanel implements AutoCloseable {
         gbc.weightx = 1.0;
         gbc.insets = new Insets(0, 0, 5, 0);
 
-        JCheckBox preventGrandExchangeBuyOffersCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            preventGrandExchangeBuyOffersCheckbox,
-            viewModel.preventGrandExchangeBuyOffersProperty
+        JComboBox<GameRulesEditorViewModel.GrandExchangeBuyPolicyMode> gePolicyModeDropdown = new JComboBox<>();
+        Bindings.bindComboBox(
+            gePolicyModeDropdown,
+            viewModel.grandExchangeBuyPolicyModeOptionsProperty,
+            viewModel.grandExchangeBuyPolicyModeProperty,
+            viewModel.grandExchangeBuyPolicyModeLabelMapProperty
         );
         Bindings.bindEnabled(
-            preventGrandExchangeBuyOffersCheckbox,
+            gePolicyModeDropdown,
             viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
         );
         panel.add(
-            createCheckboxInput(
-                "Prevent buy offers",
-                "Whether to prevent buying items on the Grand Exchange that are still locked",
-                preventGrandExchangeBuyOffersCheckbox
-            ), gbc
-        );
-        gbc.gridy++;
-
-        JCheckBox preventGrandExchangeGearBuyOffersCheckbox = new JCheckBox();
-        Bindings.bindSelected(
-            preventGrandExchangeGearBuyOffersCheckbox,
-            viewModel.preventGrandExchangeGearBuyOffersProperty
-        );
-        Bindings.bindEnabled(
-            preventGrandExchangeGearBuyOffersCheckbox,
-            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
-        );
-        panel.add(
-            createCheckboxInput(
-                "Allow consumables to be bought on GE",
-                "Gear must be earned. Supplies can be bought.",
-                preventGrandExchangeGearBuyOffersCheckbox
+            createComboBoxInput(
+                "GE buy policy",
+                "Choose how GE purchases are restricted for the group. "
+                    + "Off: no GE restriction. Unlocked items only: every item must be unlocked. "
+                    + "Allow supplies before unlock: supplies can be bought immediately, but gear still requires unlock.",
+                gePolicyModeDropdown
             ), gbc
         );
 
@@ -609,6 +596,31 @@ public class GameRulesEditor extends JPanel implements AutoCloseable {
         gbc.weightx = 1.0;
 
         inputPanel.add(spinner, gbc);
+        return inputPanel;
+    }
+
+    private JPanel createComboBoxInput(String labelText, String description, JComboBox<?> comboBox) {
+        JPanel inputPanel = new JPanel(new GridBagLayout());
+        inputPanel.setOpaque(false);
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.insets = new Insets(0, 0, 5, 0);
+
+        JLabel label = new JLabel(labelText);
+        label.setForeground(Color.WHITE);
+        label.setToolTipText(description);
+        inputPanel.add(label, gbc);
+        gbc.gridy++;
+
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+
+        comboBox.setToolTipText(description);
+        inputPanel.add(comboBox, gbc);
         return inputPanel;
     }
 

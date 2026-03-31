@@ -28,6 +28,24 @@ public class PolicyBase implements BUPluginLifecycle {
 | `PlayerVersusPlayerPolicy` | `policies/PlayerVersusPlayerPolicy.java` | Handle PvP loot restrictions |
 | `FaladorPartyRoomPolicy` | `policies/FaladorPartyRoomPolicy.java` | Block party room balloon drops |
 
+## Grand Exchange Buy Policy Modes
+
+The GE policy uses one mode selection in the game rules UI:
+
+- `Off` - no GE buy restriction.
+- `Unlocked items only` - all GE buys require item unlock.
+- `Allow supplies before unlock` - non-gear supplies can be bought before unlock; gear still requires unlock.
+
+### Gear vs Supplies Classification
+
+The plugin classifies an item as **gear** when its inventory actions include one of:
+
+- `wear`
+- `wield`
+- `equip`
+
+If none of those actions exist, the item is treated as a **supply/non-gear** item for this policy.
+
 ## Event Handlers
 
 | Policy | Events Handled |

@@ -58,6 +58,14 @@ public final class ChatMessageProvider {
             MessageKey.FALADOR_PARTY_ROOM_BALLOON_RESTRICTION,
             this::faladorPartyRoomBalloonRestrictionMessage
         );
+        this.resolvers.put(
+            MessageKey.GE_BUY_LOCKED_ITEM_RESTRICTION,
+            this::geBuyLockedItemRestrictionMessage
+        );
+        this.resolvers.put(
+            MessageKey.GE_BUY_GEAR_RESTRICTION,
+            this::geBuyGearRestrictionMessage
+        );
     }
 
     /**
@@ -168,6 +176,24 @@ public final class ChatMessageProvider {
         );
     }
 
+    private String geBuyLockedItemRestrictionMessage() {
+        boolean isSolo = isSolo();
+        String identity = getIdentity(isSolo);
+        return String.format(
+            "You cannot buy this item on the Grand Exchange due to %s GE policy.",
+            identity
+        );
+    }
+
+    private String geBuyGearRestrictionMessage() {
+        boolean isSolo = isSolo();
+        String identity = getIdentity(isSolo);
+        return String.format(
+            "You cannot buy this item on the Grand Exchange due to %s GE policy.",
+            identity
+        );
+    }
+
     /**
      * Keys for message lookups. Extend with non-error keys later without changing call sites.
      */
@@ -182,5 +208,7 @@ public final class ChatMessageProvider {
         PLAYER_VERSUS_PLAYER_LOOT_KEY_RESTRICTION,
         ITEM_UNLOCKS_UNSUPPORTED_WORLD,
         FALADOR_PARTY_ROOM_BALLOON_RESTRICTION,
+        GE_BUY_LOCKED_ITEM_RESTRICTION,
+        GE_BUY_GEAR_RESTRICTION,
     }
 }

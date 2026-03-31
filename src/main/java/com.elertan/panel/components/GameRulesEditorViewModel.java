@@ -8,6 +8,10 @@ import com.google.inject.ImplementedBy;
 import com.google.inject.Singleton;
 import java.beans.PropertyChangeListener;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +23,9 @@ public class GameRulesEditorViewModel extends BaseViewModel {
     public final Property<Boolean> restrictGroundItemsProperty;
     public final Property<Boolean> preventTradeOutsideGroupProperty;
     public final Property<Boolean> preventTradeLockedItemsProperty;
-    public final Property<Boolean> preventGrandExchangeBuyOffersProperty;
-    public final Property<Boolean> preventGrandExchangeGearBuyOffersProperty;
+    public final Property<GrandExchangeBuyPolicyMode> grandExchangeBuyPolicyModeProperty;
+    public final Property<List<GrandExchangeBuyPolicyMode>> grandExchangeBuyPolicyModeOptionsProperty;
+    public final Property<Map<GrandExchangeBuyPolicyMode, String>> grandExchangeBuyPolicyModeLabelMapProperty;
     public final Property<Boolean> preventPlayedOwnedHouseProperty;
     public final Property<Boolean> restrictPlayerVersusPlayerLootProperty;
     public final Property<Boolean> restrictFaladorPartyRoomBalloonsProperty;
@@ -50,8 +55,11 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         restrictGroundItemsProperty = new Property<>(gameRules.isRestrictGroundItems());
         preventTradeOutsideGroupProperty = new Property<>(gameRules.isPreventTradeOutsideGroup());
         preventTradeLockedItemsProperty = new Property<>(gameRules.isPreventTradeLockedItems());
-        preventGrandExchangeBuyOffersProperty = new Property<>(gameRules.isPreventGrandExchangeBuyOffers());
-        preventGrandExchangeGearBuyOffersProperty = new Property<>(gameRules.isPreventGrandExchangeGearBuyOffers());
+        grandExchangeBuyPolicyModeProperty = new Property<>(toGrandExchangeBuyPolicyMode(gameRules));
+        grandExchangeBuyPolicyModeOptionsProperty = new Property<>(
+            Arrays.asList(GrandExchangeBuyPolicyMode.values())
+        );
+        grandExchangeBuyPolicyModeLabelMapProperty = new Property<>(createGrandExchangeModeLabels());
         preventPlayedOwnedHouseProperty = new Property<>(gameRules.isPreventPlayerOwnedHouse());
         restrictPlayerVersusPlayerLootProperty = new Property<>(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty = new Property<>(gameRules.isRestrictFaladorPartyRoomBalloons());
@@ -85,8 +93,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         addListener(restrictGroundItemsProperty, updateListener);
         addListener(preventTradeOutsideGroupProperty, updateListener);
         addListener(preventTradeLockedItemsProperty, updateListener);
-        addListener(preventGrandExchangeBuyOffersProperty, updateListener);
-        addListener(preventGrandExchangeGearBuyOffersProperty, updateListener);
+        addListener(grandExchangeBuyPolicyModeProperty, updateListener);
         addListener(preventPlayedOwnedHouseProperty, updateListener);
         addListener(restrictPlayerVersusPlayerLootProperty, updateListener);
         addListener(restrictFaladorPartyRoomBalloonsProperty, updateListener);
@@ -111,8 +118,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         restrictGroundItemsProperty.set(gameRules.isRestrictGroundItems());
         preventTradeOutsideGroupProperty.set(gameRules.isPreventTradeOutsideGroup());
         preventTradeLockedItemsProperty.set(gameRules.isPreventTradeLockedItems());
-        preventGrandExchangeBuyOffersProperty.set(gameRules.isPreventGrandExchangeBuyOffers());
-        preventGrandExchangeGearBuyOffersProperty.set(gameRules.isPreventGrandExchangeGearBuyOffers());
+        grandExchangeBuyPolicyModeProperty.set(toGrandExchangeBuyPolicyMode(gameRules));
         preventPlayedOwnedHouseProperty.set(gameRules.isPreventPlayerOwnedHouse());
         restrictPlayerVersusPlayerLootProperty.set(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty.set(gameRules.isRestrictFaladorPartyRoomBalloons());
@@ -140,6 +146,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
 
         GameRules currentGameRules = props.getGameRules();
         String partyPassword = currentGameRules == null ? null : currentGameRules.getPartyPassword();
+        GrandExchangeBuyPolicyMode geMode = grandExchangeBuyPolicyModeProperty.get();
 
         GameRules newGameRules = GameRules.builder()
             .lastUpdatedByAccountHash(props.getAccountHash())
@@ -148,8 +155,8 @@ public class GameRulesEditorViewModel extends BaseViewModel {
             .restrictGroundItems(restrictGroundItemsProperty.get())
             .preventTradeOutsideGroup(preventTradeOutsideGroupProperty.get())
             .preventTradeLockedItems(preventTradeLockedItemsProperty.get())
-            .preventGrandExchangeBuyOffers(preventGrandExchangeBuyOffersProperty.get())
-            .preventGrandExchangeGearBuyOffers(preventGrandExchangeGearBuyOffersProperty.get())
+            .preventGrandExchangeBuyOffers(geMode.preventLocked())
+            .preventGrandExchangeGearBuyOffers(geMode.preventGear())
             .preventPlayerOwnedHouse(preventPlayedOwnedHouseProperty.get())
             .restrictPlayerVersusPlayerLoot(restrictPlayerVersusPlayerLootProperty.get())
             .restrictFaladorPartyRoomBalloons(restrictFaladorPartyRoomBalloonsProperty.get())
@@ -158,6 +165,54 @@ public class GameRulesEditorViewModel extends BaseViewModel {
             .partyPassword(partyPassword)
             .build();
         props.onGameRulesChanged.accept(newGameRules);
+    }
+
+    private static GrandExchangeBuyPolicyMode toGrandExchangeBuyPolicyMode(GameRules rules) {
+        boolean preventLocked = rules.isPreventGrandExchangeBuyOffers();
+        boolean preventGear = rules.isPreventGrandExchangeGearBuyOffers();
+        if (preventGear) {
+            return GrandExchangeBuyPolicyMode.ALLOW_SUPPLIES_BEFORE_UNLOCK;
+        }
+        if (preventLocked) {
+            return GrandExchangeBuyPolicyMode.UNLOCKED_ITEMS_ONLY;
+        }
+        return GrandExchangeBuyPolicyMode.OFF;
+    }
+
+    private static Map<GrandExchangeBuyPolicyMode, String> createGrandExchangeModeLabels() {
+        Map<GrandExchangeBuyPolicyMode, String> labels = new LinkedHashMap<>();
+        labels.put(GrandExchangeBuyPolicyMode.OFF, "Off (No GE buy restrictions)");
+        labels.put(
+            GrandExchangeBuyPolicyMode.UNLOCKED_ITEMS_ONLY,
+            "Unlocked items only (All items require unlock)"
+        );
+        labels.put(
+            GrandExchangeBuyPolicyMode.ALLOW_SUPPLIES_BEFORE_UNLOCK,
+            "Allow supplies before unlock (Gear still requires unlock)"
+        );
+        return labels;
+    }
+
+    public enum GrandExchangeBuyPolicyMode {
+        OFF(false, false),
+        UNLOCKED_ITEMS_ONLY(true, false),
+        ALLOW_SUPPLIES_BEFORE_UNLOCK(true, true);
+
+        private final boolean preventLocked;
+        private final boolean preventGear;
+
+        GrandExchangeBuyPolicyMode(boolean preventLocked, boolean preventGear) {
+            this.preventLocked = preventLocked;
+            this.preventGear = preventGear;
+        }
+
+        public boolean preventLocked() {
+            return preventLocked;
+        }
+
+        public boolean preventGear() {
+            return preventGear;
+        }
     }
 
     @ImplementedBy(FactoryImpl.class)
