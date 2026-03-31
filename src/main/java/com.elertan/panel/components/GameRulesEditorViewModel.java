@@ -20,6 +20,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
     public final Property<Boolean> preventTradeOutsideGroupProperty;
     public final Property<Boolean> preventTradeLockedItemsProperty;
     public final Property<Boolean> preventGrandExchangeBuyOffersProperty;
+    public final Property<Boolean> preventGrandExchangeGearBuyOffersProperty;
     public final Property<Boolean> preventPlayedOwnedHouseProperty;
     public final Property<Boolean> restrictPlayerVersusPlayerLootProperty;
     public final Property<Boolean> restrictFaladorPartyRoomBalloonsProperty;
@@ -50,6 +51,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         preventTradeOutsideGroupProperty = new Property<>(gameRules.isPreventTradeOutsideGroup());
         preventTradeLockedItemsProperty = new Property<>(gameRules.isPreventTradeLockedItems());
         preventGrandExchangeBuyOffersProperty = new Property<>(gameRules.isPreventGrandExchangeBuyOffers());
+        preventGrandExchangeGearBuyOffersProperty = new Property<>(gameRules.isPreventGrandExchangeGearBuyOffers());
         preventPlayedOwnedHouseProperty = new Property<>(gameRules.isPreventPlayerOwnedHouse());
         restrictPlayerVersusPlayerLootProperty = new Property<>(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty = new Property<>(gameRules.isRestrictFaladorPartyRoomBalloons());
@@ -84,6 +86,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         addListener(preventTradeOutsideGroupProperty, updateListener);
         addListener(preventTradeLockedItemsProperty, updateListener);
         addListener(preventGrandExchangeBuyOffersProperty, updateListener);
+        addListener(preventGrandExchangeGearBuyOffersProperty, updateListener);
         addListener(preventPlayedOwnedHouseProperty, updateListener);
         addListener(restrictPlayerVersusPlayerLootProperty, updateListener);
         addListener(restrictFaladorPartyRoomBalloonsProperty, updateListener);
@@ -109,6 +112,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
         preventTradeOutsideGroupProperty.set(gameRules.isPreventTradeOutsideGroup());
         preventTradeLockedItemsProperty.set(gameRules.isPreventTradeLockedItems());
         preventGrandExchangeBuyOffersProperty.set(gameRules.isPreventGrandExchangeBuyOffers());
+        preventGrandExchangeGearBuyOffersProperty.set(gameRules.isPreventGrandExchangeGearBuyOffers());
         preventPlayedOwnedHouseProperty.set(gameRules.isPreventPlayerOwnedHouse());
         restrictPlayerVersusPlayerLootProperty.set(gameRules.isRestrictPlayerVersusPlayerLoot());
         restrictFaladorPartyRoomBalloonsProperty.set(gameRules.isRestrictFaladorPartyRoomBalloons());
@@ -145,6 +149,7 @@ public class GameRulesEditorViewModel extends BaseViewModel {
             .preventTradeOutsideGroup(preventTradeOutsideGroupProperty.get())
             .preventTradeLockedItems(preventTradeLockedItemsProperty.get())
             .preventGrandExchangeBuyOffers(preventGrandExchangeBuyOffersProperty.get())
+            .preventGrandExchangeGearBuyOffers(preventGrandExchangeGearBuyOffersProperty.get())
             .preventPlayerOwnedHouse(preventPlayedOwnedHouseProperty.get())
             .restrictPlayerVersusPlayerLoot(restrictPlayerVersusPlayerLootProperty.get())
             .restrictFaladorPartyRoomBalloons(restrictFaladorPartyRoomBalloonsProperty.get())

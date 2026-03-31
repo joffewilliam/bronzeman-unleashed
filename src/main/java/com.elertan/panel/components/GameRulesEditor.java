@@ -337,6 +337,24 @@ public class GameRulesEditor extends JPanel implements AutoCloseable {
                 preventGrandExchangeBuyOffersCheckbox
             ), gbc
         );
+        gbc.gridy++;
+
+        JCheckBox preventGrandExchangeGearBuyOffersCheckbox = new JCheckBox();
+        Bindings.bindSelected(
+            preventGrandExchangeGearBuyOffersCheckbox,
+            viewModel.preventGrandExchangeGearBuyOffersProperty
+        );
+        Bindings.bindEnabled(
+            preventGrandExchangeGearBuyOffersCheckbox,
+            viewModel.isViewOnlyModeProperty.derive(isViewOnlyMode -> !isViewOnlyMode)
+        );
+        panel.add(
+            createCheckboxInput(
+                "Consumables only",
+                "Whether to prevent buying wearable/equippable gear on the Grand Exchange",
+                preventGrandExchangeGearBuyOffersCheckbox
+            ), gbc
+        );
 
         return panel;
     }

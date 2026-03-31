@@ -130,6 +130,13 @@ public class GameRulesService implements BUPluginLifecycle {
                 booleanFormatter.apply(newGameRules.isPreventGrandExchangeBuyOffers())
             );
         }
+        if (oldGameRules.isPreventGrandExchangeGearBuyOffers()
+            != newGameRules.isPreventGrandExchangeGearBuyOffers()) {
+            differences.put(
+                "Grand Exchange consumables only",
+                booleanFormatter.apply(newGameRules.isPreventGrandExchangeGearBuyOffers())
+            );
+        }
         if (oldGameRules.isPreventTradeLockedItems() != newGameRules.isPreventTradeLockedItems()) {
             differences.put(
                 "Prevent trade locked items",

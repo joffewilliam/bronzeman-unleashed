@@ -11,6 +11,7 @@ import com.google.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.events.WidgetClosed;
@@ -80,7 +81,9 @@ public class GrandExchangePolicy extends PolicyBase {
 
     private void onSearchBuild() {
         PolicyContext context = createContext();
-        if (!context.shouldApplyForRules(GameRules::isPreventGrandExchangeBuyOffers)) {
+        boolean preventLocked = context.shouldApplyForRules(GameRules::isPreventGrandExchangeBuyOffers);
+        boolean preventGear = context.shouldApplyForRules(GameRules::isPreventGrandExchangeGearBuyOffers);
+        if (!preventLocked && !preventGear) {
             return;
         }
 
@@ -98,19 +101,26 @@ public class GrandExchangePolicy extends PolicyBase {
         for (int i = 0; i < children.length; i += 3) {
             final Widget itemWidget = children[i + 2];
             final int itemId = itemWidget.getItemId();
-            final boolean hasUnlockedItem;
-            try {
-                hasUnlockedItem = itemUnlockService.hasUnlockedItem(itemId);
-            } catch (Exception e) {
-                log.error(
-                    "Failed to check hasUnlockedItem({}) in onGrandExchangeSearchBuild",
-                    itemId,
-                    e
-                );
-                return;
+            boolean block = false;
+
+            if (preventLocked) {
+                try {
+                    block = !itemUnlockService.hasUnlockedItem(itemId);
+                } catch (Exception e) {
+                    log.error(
+                        "Failed to check hasUnlockedItem({}) in onGrandExchangeSearchBuild",
+                        itemId,
+                        e
+                    );
+                    return;
+                }
             }
 
-            if (!hasUnlockedItem) {
+            if (!block && preventGear && isGearItem(itemId)) {
+                block = true;
+            }
+
+            if (block) {
                 // Make not clickable
                 children[i].setHidden(true);
 
@@ -119,5 +129,32 @@ public class GrandExchangePolicy extends PolicyBase {
                 children[i + 2].setOpacity(120);
             }
         }
+    }
+
+    private boolean isGearItem(int itemId) {
+        ItemComposition itemComposition = client.getItemDefinition(itemId);
+        if (itemComposition == null) {
+            return false;
+        }
+
+        String[] actions = itemComposition.getInventoryActions();
+        if (actions == null) {
+            return false;
+        }
+
+        for (String action : actions) {
+            if (action == null) {
+                continue;
+            }
+
+            String normalizedAction = action.toLowerCase();
+            if (normalizedAction.contains("wear")
+                || normalizedAction.contains("equip")
+                || normalizedAction.contains("wield")) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
